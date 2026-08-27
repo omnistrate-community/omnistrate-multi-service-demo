@@ -1,0 +1,893 @@
+# yaml-language-server: $schema=https://api.omnistrate.cloud/2022-09-01-00/schema/service-spec-schema.json
+# =============================================================================
+# Temporal AI Platform
+#
+# Nine resources in a dependsOn graph: four Terraform stacks provisioning cloud
+# infrastructure, then five Helm releases.
+#
+# Temporal runs with split persistence. A Managed Cassandra instance holds
+# workflow history and shards; the managed Postgres provisioned below holds the
+# searchable visibility index, and a second database on the same server backs
+# Trino's Iceberg catalog.
+#
+# The Cassandra connection arrives as apiParameters, taken from a Managed
+# Cassandra instance the customer created first. Everything else in the graph is
+# provisioned here.
+#
+# Pinned chart versions:
+#   temporal    1.6.0    appVersion 1.31.2
+#   trino       1.42.2   image.tag overridden to 483, ahead of the chart default
+#   vllm-stack  0.1.12   pre-1.0, so pinned hard
+#
+# ---------------------------------------------------------------------------
+# Replace before first use
+#   REPLACE_ME_AWS_ACCOUNT_ID          the AWS account designated Control Plane
+#   REPLACE_ME_AWS_BOOTSTRAP_ROLE_ARN  bootstrap role ARN in that account
+#   REPLACE_ME_GIT_REPO_URL            git URL of this repository
+#   REPLACE_ME_GIT_TAG                 pinned tag, e.g. refs/tags/v0.1.0
+#   REPLACE_ME_REGISTRY                registry holding the ai-worker image
+#   REPLACE_ME_STRIPE_PRODUCT_ID       Stripe product id for this plan
+#
+# ---------------------------------------------------------------------------
+# Every metered workload sets omnistrate.com/include-customer-billing on its pod
+# template. The values path differs per chart, noted at each site below.
+# =============================================================================
+
+name: Temporal AI Platform
+
+deployment:
+  byoaDeployment:
+    awsAccountId: "REPLACE_ME_AWS_ACCOUNT_ID"
+    awsBootstrapRoleAccountArn: "REPLACE_ME_AWS_BOOTSTRAP_ROLE_ARN"
+
+tenancyType: CUSTOM_TENANCY
+
+features:
+  # MANDATORY for any BYOA plan with Terraform. In a BYOA account the bootstrap
+  # creates NO Terraform execution role on any cloud, AWS gates it on
+  # IsServiceProviderAccountCondition, GCP's assign_tf_user_roles() is empty, and
+  # Azure's app gets no RBAC. Without this the Terraform layer has no permission
+  # to create anything, and you find out as an AccessDenied AFTER a 25-45 minute
+  # cell bootstrap has burned.
+  CUSTOM_TERRAFORM_POLICY:
+    privateModules: []
+
+pricing:
+  - dimension: cpu
+    unit: cores
+    timeUnit: hour
+    price: 0.032
+  - dimension: memory
+    unit: GiB
+    timeUnit: hour
+    price: 0.008
+  - dimension: storage
+    unit: GiB
+    timeUnit: hour
+    price: 0.0002
+  - dimension: gpu
+    unit: millicores
+    timeUnit: hour
+    price: 0.0012
+  - dimension: replica
+    timeUnit: hour
+    price: 0.05
+
+billingProviders:
+  - name: stripe
+    externalProductID: "REPLACE_ME_STRIPE_PRODUCT_ID"
+    isDefault: true
+    enablePaywall: false
+    disableInvoiceGeneration: false
+
+services:
+  # ===========================================================================
+  # LEVEL 1, netAttach
+  # Attaches to the deployment cell's EXISTING VPC. Creates no network.
+  # ===========================================================================
+  - name: netAttach
+    internal: true
+    description: DB subnet group, security group and private endpoints inside the deployment cell's existing network.
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /terraform/aws/netattach
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: db_security_group_id
+              exported: false
+            - key: db_subnet_group_name
+              exported: false
+        gcp:
+          terraformPath: /terraform/gcp/netattach
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: db_security_group_id
+              exported: false
+            - key: db_subnet_group_name
+              exported: false
+        azure:
+          terraformPath: /terraform/azure/netattach
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: db_security_group_id
+              exported: false
+            - key: db_subnet_group_name
+              exported: false
+            - key: resource_group_name
+              exported: false
+
+  # ===========================================================================
+  # LEVEL 2, storageInfra
+  # One bucket, three consumers: the Iceberg warehouse Trino queries, the vLLM
+  # model weights, and the aiWorkers' Parquet output.
+  # ===========================================================================
+  - name: storageInfra
+    internal: true
+    description: Object storage bucket and CMK for the Iceberg warehouse and model weights.
+    dependsOn:
+      - netAttach
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /terraform/aws/storage
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: bucket_uri
+              exported: true
+            - key: bucket_name
+              exported: true
+            - key: bucket_region
+              exported: false
+            - key: kms_key_id
+              exported: false
+        gcp:
+          terraformPath: /terraform/gcp/storage
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: bucket_uri
+              exported: true
+            - key: bucket_name
+              exported: true
+            - key: bucket_region
+              exported: false
+            - key: kms_key_id
+              exported: false
+        azure:
+          terraformPath: /terraform/azure/storage
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: bucket_uri
+              exported: true
+            - key: bucket_name
+              exported: true
+            - key: bucket_region
+              exported: false
+            - key: kms_key_id
+              exported: false
+            - key: storage_account_id
+              exported: false
+            - key: key_vault_id
+              exported: false
+
+  # ===========================================================================
+  # LEVEL 2, visibilityDb
+  # Temporal's visibility store, plus a second database backing Trino's Iceberg
+  # JDBC catalog. Reusing one Postgres server for both avoids adding an entire
+  # Iceberg REST catalog tier to the topology.
+  # ===========================================================================
+  - name: visibilityDb
+    internal: true
+    description: Managed PostgreSQL 16 for Temporal's visibility store and the Iceberg JDBC catalog.
+    dependsOn:
+      - netAttach
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /terraform/aws/visibilitydb
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: pg_endpoint
+              exported: true
+            - key: pg_host
+              exported: false
+            - key: pg_port
+              exported: false
+            - key: pg_visibility_db
+              exported: false
+            - key: pg_iceberg_db
+              exported: false
+            - key: pg_user
+              exported: false
+            # pg_password is not exported. Exported values appear in
+            # result_params in plaintext.
+            - key: pg_password
+              exported: false
+        gcp:
+          terraformPath: /terraform/gcp/visibilitydb
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: pg_endpoint
+              exported: true
+            - key: pg_host
+              exported: false
+            - key: pg_port
+              exported: false
+            - key: pg_visibility_db
+              exported: false
+            - key: pg_iceberg_db
+              exported: false
+            - key: pg_user
+              exported: false
+            - key: pg_password
+              exported: false
+        azure:
+          terraformPath: /terraform/azure/visibilitydb
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: pg_endpoint
+              exported: true
+            - key: pg_host
+              exported: false
+            - key: pg_port
+              exported: false
+            - key: pg_visibility_db
+              exported: false
+            - key: pg_iceberg_db
+              exported: false
+            - key: pg_user
+              exported: false
+            - key: pg_password
+              exported: false
+
+  # ===========================================================================
+  # LEVEL 3, identityInfra
+  # Federated identity so pods reach the bucket without a static key.
+  # ===========================================================================
+  - name: identityInfra
+    internal: true
+    description: Workload identity (IRSA / GKE Workload Identity / Azure federated credential) for bucket access.
+    dependsOn:
+      - storageInfra
+    terraformConfigurations:
+      configurationPerCloudProvider:
+        aws:
+          terraformPath: /terraform/aws/identity
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: workload_identity_ref
+              exported: false
+        gcp:
+          terraformPath: /terraform/gcp/identity
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: workload_identity_ref
+              exported: false
+        azure:
+          terraformPath: /terraform/azure/identity
+          gitConfiguration:
+            reference: "REPLACE_ME_GIT_TAG"
+            repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          requiredOutputs:
+            - key: workload_identity_ref
+              exported: false
+
+  # ===========================================================================
+  # LEVEL 4, temporalSchema
+  # The SAME temporal chart with the servers disabled, which renders ONLY the two
+  # store Secrets and the schema Job. No Kustomize, no second repo.
+  #
+  # The Job's initContainers run in store order, Cassandra keyspace + default
+  # schema first, then the SQL visibility schema, which is exactly the ordering
+  # Temporal requires.
+  # ===========================================================================
+  - name: temporalSchema
+    internal: true
+    description: Creates the Cassandra keyspace and the SQL visibility schema before the servers start.
+    dependsOn:
+      - visibilityDb
+      - identityInfra
+    apiParameters:
+      - key: cassandraHost
+        name: Cassandra Contact Point
+        description: >-
+          From your Managed Cassandra instance. Shape is
+          <instance-id>-dc1-service.<namespace>.svc.cluster.local, shown on the
+          instance's detail page. Comma-separate multiple hosts.
+        type: String
+        required: true
+        modifiable: false
+        export: true
+      - key: cassandraUser
+        name: Cassandra Superuser
+        description: Superuser name you set on the Managed Cassandra instance.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "temporal"
+      - key: cassandraPassword
+        name: Cassandra Password
+        description: The same password you set on the Managed Cassandra instance.
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+      - key: cassandraDatacenter
+        name: Cassandra Datacenter
+        description: Datacenter name. Managed Cassandra always uses dc1; do not change unless you built the cluster by hand.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "dc1"
+      - key: cassandraReplicationFactor
+        name: Keyspace Replication Factor
+        description: Replication factor for the temporal keyspace. Must not exceed the Cassandra cluster size.
+        type: Float64
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "3"
+    helmChartConfiguration:
+      chartName: temporal
+      chartVersion: "1.6.0"
+      chartRepoName: temporal
+      chartRepoURL: https://go.temporal.io/helm-charts
+      # A different fullnameOverride than temporalServer, or the two releases
+      # fight over the same -default-store / -visibility-store Secrets.
+      releaseName: temporal-schema
+      runtimeConfiguration:
+        wait: true
+        # The schema Job is a plain batch/v1 Job, so waitForJobs is what actually
+        # gates the servers behind it.
+        waitForJobs: true
+        timeoutNanos: 1800000000000
+      chartValues:
+        fullnameOverride: temporal-schema
+        # NOTE the absent keys: no `cassandra`, `postgresql`, `elasticsearch`,
+        # `prometheus`, `grafana`. Chart 1.6.0 hard-fails on all of them.
+        shims:
+          dockerize: false
+          elasticsearchTool: false
+        additionalLabels:
+          omnistrate.com/include-customer-billing: "true"
+        server:
+          enabled: false
+        web:
+          enabled: false
+        admintools:
+          enabled: false
+        schema:
+          # Explicit, not inherited: both default to true and would re-attempt
+          # keyspace/database creation on every reconcile.
+          createDatabase: true
+          setup:
+            enabled: true
+          update:
+            enabled: true
+        serverConfig: {}
+
+  # ===========================================================================
+  # LEVEL 5, temporalServer  (the customer-facing root)
+  # ===========================================================================
+  - name: temporalServer
+    description: >-
+      Temporal cluster with split persistence, using Cassandra for history and
+      shards and managed PostgreSQL for searchable visibility, plus the Web UI.
+    dependsOn:
+      - temporalSchema
+    apiParameters:
+      # Threaded again here because parameterDependencyMap is SINGLE-HOP: a value
+      # declared only on temporalSchema is not visible to this resource.
+      - key: cassandraHost
+        name: Cassandra Contact Point
+        description: From your Managed Cassandra instance, matching the value given to the schema step.
+        type: String
+        required: true
+        modifiable: false
+        export: true
+        parameterDependencyMap:
+          temporalSchema: cassandraHost
+      - key: cassandraUser
+        name: Cassandra Superuser
+        description: Superuser name on the Managed Cassandra instance.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "temporal"
+        parameterDependencyMap:
+          temporalSchema: cassandraUser
+      - key: cassandraPassword
+        name: Cassandra Password
+        description: Password for the Cassandra superuser.
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+        parameterDependencyMap:
+          temporalSchema: cassandraPassword
+      - key: cassandraDatacenter
+        name: Cassandra Datacenter
+        description: Datacenter name, used for local_quorum routing.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "dc1"
+        parameterDependencyMap:
+          temporalSchema: cassandraDatacenter
+      - key: temporalNamespace
+        name: Temporal Namespace
+        description: Namespace created at startup for your workflows.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "default"
+      - key: historyReplicas
+        name: History Service Replicas
+        description: History is the hot path, so scale this first under load.
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "2"
+      - key: frontendReplicas
+        name: Frontend Replicas
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "2"
+    helmChartConfiguration:
+      chartName: temporal
+      chartVersion: "1.6.0"
+      chartRepoName: temporal
+      chartRepoURL: https://go.temporal.io/helm-charts
+      releaseName: temporal
+      runtimeConfiguration:
+        wait: true
+        waitForJobs: true
+        timeoutNanos: 1800000000000
+      chartValues:
+        # Pinned so the frontend Service is deterministically
+        # `temporal-frontend.<ns>.svc.cluster.local:7233` regardless of the
+        # release name Omnistrate generates. Helm resources emit no outputs, so
+        # downstream resources cannot READ this address, it has to be knowable.
+        fullnameOverride: temporal
+        shims:
+          dockerize: false
+          elasticsearchTool: false
+        # This one key labels all six Deployments and the Jobs, and stays out
+        # of spec.selector.matchLabels so it remains mutable. Without it the
+        # workloads are absent from the bill.
+        additionalLabels:
+          omnistrate.com/include-customer-billing: "true"
+        schema:
+          # Already done by temporalSchema.
+          createDatabase: false
+          setup:
+            enabled: false
+          update:
+            enabled: false
+        server:
+          replicaCount: 1
+          config:
+            namespaces:
+              # Idempotent `describe || create` Job. Needs waitForJobs, set above.
+              create: true
+              namespace:
+                - name: $var.temporalNamespace
+                  retention: 72h
+            persistence:
+              defaultStore: default
+              visibilityStore: visibility
+              # Fixed after the first deployment, so choose it once.
+              numHistoryShards: 512
+              datastores:
+                default:
+                  cassandra:
+                    # Already created by temporalSchema.
+                    createDatabase: false
+                    manageSchema: false
+                    # Comma-separated STRING, not a list, the admintools helper
+                    # calls a string method on it and a list breaks the render.
+                    hosts: $var.cassandraHost
+                    # Numeric, not quoted. Values under persistence.* reach the
+                    # server config through toYaml with quoting preserved, and a
+                    # quoted port fails to unmarshal at startup.
+                    port: 9042
+                    keyspace: temporal
+                    user: $var.cassandraUser
+                    # Inline, NOT existingSecret: Omnistrate has no per-instance
+                    # mechanism to create a K8s Secret before helm install. The
+                    # chart creates the Secret itself and substitutes
+                    # {{ env "TEMPORAL_DEFAULT_STORE_PASSWORD" }} into the
+                    # ConfigMap, so no plaintext lands there.
+                    password: $var.cassandraPassword
+                    datacenter: $var.cassandraDatacenter
+                    consistency:
+                      default:
+                        consistency: local_quorum
+                        serialConsistency: local_serial
+                # MUST be named exactly `visibility`, the schema directory path
+                # is derived from the store name.
+                visibility:
+                  sql:
+                    createDatabase: false
+                    manageSchema: false
+                    pluginName: postgres12
+                    driverName: postgres12
+                    databaseName: "{{ $visibilityDb.out.pg_visibility_db }}"
+                    # MANDATORY. The host/port alternative the values file
+                    # advertises does not work, the server's Go struct has
+                    # ConnectAddr with validate:"nonzero" and no Host/Port.
+                    connectAddr: "{{ $visibilityDb.out.pg_endpoint }}"
+                    connectProtocol: tcp
+                    user: "{{ $visibilityDb.out.pg_user }}"
+                    password: "{{ $visibilityDb.out.pg_password }}"
+          frontend:
+            replicaCount: $var.frontendReplicas
+          history:
+            replicaCount: $var.historyReplicas
+          matching:
+            replicaCount: 2
+          worker:
+            replicaCount: 1
+        web:
+          enabled: true
+          replicaCount: 1
+        admintools:
+          enabled: true
+
+  # ===========================================================================
+  # LEVEL 6, vllmInference
+  # ===========================================================================
+  - name: vllmInference
+    internal: true
+    description: vLLM serving a Qwen model on GPU, with weights streamed from the provisioned bucket.
+    dependsOn:
+      - temporalServer
+    compute:
+      instanceTypes:
+        # Single-GPU instance types. A node's full GPU pool normalises to 1000
+        # millicores for metering, so a one-GPU pod on a single-GPU node
+        # accounts for a whole billable unit.
+        - name: g6.xlarge
+          cloudProvider: aws
+        - name: g2-standard-8
+          cloudProvider: gcp
+        - name: Standard_NC24ads_A100_v4
+          cloudProvider: azure
+    apiParameters:
+      - key: modelUri
+        name: Model
+        description: >-
+          Hugging Face model id, or an s3:// gs:// az:// URI inside the
+          provisioned bucket. Because the chart passes this straight through as
+          the positional `vllm serve` argument, one field switches between the two
+          with no structural change, so the Hugging Face path stays available as
+          a fallback.
+        type: String
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "Qwen/Qwen3.5-4B"
+      - key: vllmImageTag
+        name: vLLM Image Tag
+        description: Tag of vllm/vllm-openai. Pinned rather than latest.
+        type: String
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "v0.28.0"
+      - key: maxModelLen
+        name: Max Context Length
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "32768"
+    helmChartConfiguration:
+      chartName: vllm-stack
+      chartVersion: "0.1.12"
+      chartRepoName: vllm
+      chartRepoURL: https://vllm-project.github.io/production-stack
+      releaseName: vllm
+      runtimeConfiguration:
+        wait: true
+        # 30 minutes. Cold start is GPU node scale-up + a multi-GiB image pull +
+        # model load + CUDA graph capture.
+        timeoutNanos: 1800000000000
+      chartValues:
+        # Both of these collide with the cell's own Observability amenity on
+        # cluster-scoped Prometheus CRDs.
+        kube-prometheus-stack:
+          enabled: false
+        prometheus-adapter:
+          enabled: false
+        servingEngineSpec:
+          enableEngine: true
+          # The chart default is "nvidia", a RuntimeClass that does not exist on
+          # stock EKS/GKE/AKS, so the pod is rejected outright. Must be cleared at
+          # BOTH scopes.
+          runtimeClassName: ""
+          startupProbe:
+            # The rendered default gives the engine only ~615s before
+            # CrashLoopBackOff, which a cold model load exceeds.
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 120
+          modelSpec:
+            - name: qwen
+              # Chart default is the lmcache fork on a floating `latest` tag. The
+              # official image is also the one that ships
+              # runai-model-streamer[s3,gcs,azure].
+              repository: vllm/vllm-openai
+              tag: $var.vllmImageTag
+              modelURL: $var.modelUri
+              runtimeClassName: ""
+              replicaCount: 1
+              # Chart default is a MIG profile (nvidia.com/mig-4g.71gb) that no
+              # plain L4/A10G/A100 node advertises -> Pending forever.
+              requestGPUType: nvidia.com/gpu
+              requestGPU: 1
+              requestCPU: 3
+              requestMemory: "24Gi"
+              pvcStorage: "120Gi"
+              # HF_HOME is backed by this PVC, so warm restarts skip the download.
+              pvcAccessMode:
+                - ReadWriteOnce
+              serviceAccountName: $sys.deployment.kubernetesServiceAccountName
+              podLabels:
+                # NOTE: podLabels, not labels, `labels` is deployment-level and
+                # would not reach the pod template, silently zeroing GPU billing.
+                omnistrate.com/include-customer-billing: "true"
+                azure.workload.identity/use: "true"
+              # Omnistrate's affinity injection handles node placement but never
+              # adds the device-plugin toleration.
+              tolerations:
+                - key: nvidia.com/gpu
+                  operator: Exists
+                  effect: NoSchedule
+              vllmConfig:
+                maxModelLen: $var.maxModelLen
+                extraArgs:
+                  - "--load-format"
+                  - "runai_streamer"
+                  - "--served-model-name"
+                  - "qwen"
+
+  # ===========================================================================
+  # LEVEL 6, aiWorkers
+  # Where the durability story actually lives: each LLM call is an individually
+  # retryable Temporal activity, so killing a worker mid-run resumes it.
+  # ===========================================================================
+  - name: aiWorkers
+    internal: true
+    description: Temporal workers that run AI activities against vLLM and write results to Cassandra and the bucket.
+    dependsOn:
+      - vllmInference
+    apiParameters:
+      - key: workerReplicas
+        name: Worker Replicas
+        description: Scale the execution tier without touching the Temporal control plane.
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "3"
+      - key: workerImageTag
+        name: Worker Image Tag
+        type: String
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "v0.1.0"
+      - key: cassandraHost
+        name: Cassandra Contact Point
+        description: Same contact point the Temporal server uses.
+        type: String
+        required: true
+        modifiable: false
+        export: true
+        parameterDependencyMap:
+          temporalServer: cassandraHost
+      - key: cassandraUser
+        name: Cassandra Superuser
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "temporal"
+        parameterDependencyMap:
+          temporalServer: cassandraUser
+      - key: cassandraPassword
+        name: Cassandra Password
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+        parameterDependencyMap:
+          temporalServer: cassandraPassword
+      - key: temporalNamespace
+        name: Temporal Namespace
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "default"
+        parameterDependencyMap:
+          temporalServer: temporalNamespace
+    helmChartConfiguration:
+      # LOCAL CHART ARTIFACT. The ai-worker chart lives in this repository, so it
+      # is shipped as a local artifact rather than published to a chart repo:
+      # `omctl build` resolves this path relative to the CWD, packages it into a
+      # .tgz, uploads it, and reads chartName/chartVersion straight out of
+      # Chart.yaml. Consequence: `omctl build` MUST be run from the repo root.
+      #
+      # Per the docs, artifactRelativePath is NOT mixed with chartRepoName /
+      # chartRepoURL, the chart metadata comes from the local Chart.yaml.
+      #
+      # `omctl docs validate` reports one violation here, because the schema
+      # lists chartName and chartRepoURL as required while a local artifact takes
+      # them from Chart.yaml instead. Adding them back disables the artifact.
+      #   docs: getting-started/build-from-helm #using-a-local-helm-chart-artifact-with-ctl
+      artifactRelativePath: images/ai-worker/chart
+      releaseName: ai-worker
+      runtimeConfiguration:
+        wait: true
+        timeoutNanos: 900000000000
+      chartValues:
+        replicaCount: $var.workerReplicas
+        image:
+          repository: "REPLACE_ME_REGISTRY/ai-worker"
+          tag: $var.workerImageTag
+          pullPolicy: IfNotPresent
+        serviceAccount:
+          annotations:
+            # Only the annotation KEY differs per cloud; the value is the same
+            # templated output everywhere. Emit only the active cloud's key in a
+            # real deployment, see README.
+            eks.amazonaws.com/role-arn: "{{ $identityInfra.out.workload_identity_ref }}"
+        podLabels:
+          omnistrate.com/include-customer-billing: "true"
+          azure.workload.identity/use: "true"
+        temporal:
+          # Deterministic because temporalServer pins fullnameOverride: temporal.
+          address: "temporal-frontend.$sys.deployment.resourceKubernetesNamespace.svc.cluster.local:7233"
+          namespace: $var.temporalNamespace
+          taskQueue: "ai-triage"
+        vllm:
+          baseUrl: "http://vllm-engine-service:80/v1"
+          model: "qwen"
+        cassandra:
+          hosts: $var.cassandraHost
+          port: 9042
+          keyspace: "ai_platform"
+          user: $var.cassandraUser
+          password: $var.cassandraPassword
+          datacenter: "dc1"
+        storage:
+          bucketUri: "{{ $storageInfra.out.bucket_uri }}"
+
+  # ===========================================================================
+  # LEVEL 7, trino
+  # Federates the Cassandra event history and the Iceberg results in one query.
+  # Coordinator and workers stay in one resource, since the chart renders
+  # deployment-coordinator.yaml unconditionally.
+  # ===========================================================================
+  - name: trino
+    internal: true
+    description: Trino SQL federation over the Cassandra event history and the Iceberg tables in the bucket.
+    dependsOn:
+      - aiWorkers
+    apiParameters:
+      - key: trinoWorkers
+        name: Trino Workers
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "2"
+      - key: cassandraHost
+        name: Cassandra Contact Point
+        type: String
+        required: true
+        modifiable: false
+        export: true
+        parameterDependencyMap:
+          aiWorkers: cassandraHost
+      - key: cassandraUser
+        name: Cassandra Superuser
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "temporal"
+        parameterDependencyMap:
+          aiWorkers: cassandraUser
+      - key: cassandraPassword
+        name: Cassandra Password
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+        parameterDependencyMap:
+          aiWorkers: cassandraPassword
+    helmChartConfiguration:
+      chartName: trino
+      chartVersion: "1.42.2"
+      chartRepoName: trino
+      chartRepoURL: https://trinodb.github.io/charts
+      releaseName: trino
+      runtimeConfiguration:
+        wait: true
+        timeoutNanos: 900000000000
+      chartValues:
+        # The chart pins appVersion 480 and lags the engine by three releases.
+        # Overriding the tag is the supported way to run current Trino.
+        image:
+          tag: "483"
+        server:
+          workers: $var.trinoWorkers
+        coordinator:
+          labels:
+            # Lands on spec.template.metadata.labels and stays out of
+            # spec.selector.matchLabels.
+            omnistrate.com/include-customer-billing: "true"
+            azure.workload.identity/use: "true"
+        worker:
+          labels:
+            omnistrate.com/include-customer-billing: "true"
+            azure.workload.identity/use: "true"
+        catalogs:
+          # --- the durable event history, read live out of Cassandra ---
+          cassandra: |
+            connector.name=cassandra
+            cassandra.contact-points=$var.cassandraHost
+            cassandra.native-protocol-port=9042
+            cassandra.consistency-level=LOCAL_QUORUM
+            cassandra.security=PASSWORD
+            cassandra.username=$var.cassandraUser
+            cassandra.password=$var.cassandraPassword
+            cassandra.load-policy.use-dc-aware=true
+            cassandra.load-policy.dc-aware.local-dc=dc1
+          # --- the aggregated results, as Iceberg tables in the bucket ---
+          # A JDBC catalog on the Postgres server we already provisioned. The
+          # alternative, a full Iceberg REST catalog, would add another tier
+          # and another database for no demo benefit.
+          iceberg: |
+            connector.name=iceberg
+            iceberg.catalog.type=jdbc
+            iceberg.jdbc-catalog.driver-class=org.postgresql.Driver
+            iceberg.jdbc-catalog.connection-url=jdbc:postgresql://{{ $visibilityDb.out.pg_endpoint }}/{{ $visibilityDb.out.pg_iceberg_db }}
+            iceberg.jdbc-catalog.connection-user={{ $visibilityDb.out.pg_user }}
+            iceberg.jdbc-catalog.connection-password={{ $visibilityDb.out.pg_password }}
+            iceberg.jdbc-catalog.catalog-name=ai_platform
+            iceberg.jdbc-catalog.default-warehouse-dir={{ $storageInfra.out.bucket_uri }}/warehouse
+            fs.native-s3.enabled=true

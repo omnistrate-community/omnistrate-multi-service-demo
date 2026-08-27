@@ -1,0 +1,21 @@
+apiVersion: v2
+name: ai-worker
+description: >-
+  Temporal workers for the Durable AI Platform. Runs DocumentTriageWorkflow, in
+  which every LLM call is an individually retryable Temporal activity against the
+  in-cluster vLLM endpoint, writing per-document rows to Cassandra and an Iceberg
+  append to the object-store warehouse Trino reads.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - temporal
+  - durable-execution
+  - llm
+  - cassandra
+  - iceberg
+home: https://github.com/omnistrate-community/durable-ai-platform
+sources:
+  - https://github.com/omnistrate-community/durable-ai-platform
+maintainers:
+  - name: Durable AI Platform

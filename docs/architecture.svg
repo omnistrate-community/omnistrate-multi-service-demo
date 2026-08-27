@@ -1,0 +1,241 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1060" width="1400" height="1060" role="img" aria-label="Durable AI Platform architecture: two composed Omnistrate service plans" font-family="system-ui, -apple-system, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif">
+<defs>
+  <marker id="ah-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#38b601"/></marker>
+  <marker id="ah-teal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#0ca99b"/></marker>
+  <marker id="ah-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#2563eb"/></marker>
+  <marker id="ah-violet" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#8b5cf6"/></marker>
+  <marker id="ah-faint" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#4b5563"/></marker>
+
+  <!-- ── logo marks: geometric, brand-tinted, 24x24 ───────────────────── -->
+  <symbol id="lg-k8s" viewBox="0 0 24 24" overflow="visible"><path d="M12,2 19.82,5.77 21.75,14.22 16.34,21.01 7.66,21.01 2.25,14.22 4.18,5.77 Z" fill="none" stroke="#326CE5" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.1" fill="none" stroke="#326CE5" stroke-width="1.5"/><path d="M12,4.6 V8.9 M18.3,7.6 15.1,10.4 M19.2,13.6 15.4,12.9 M14.9,18.6 13.4,14.9 M9.1,18.6 10.6,14.9 M4.8,13.6 8.6,12.9 M5.7,7.6 8.9,10.4" stroke="#326CE5" stroke-width="1.25" stroke-linecap="round"/></symbol>
+  <symbol id="lg-tf" viewBox="0 0 24 24" overflow="visible"><path d="M3.5,12.5 L9.2,9.3 L9.2,15.8 L3.5,19 Z" fill="#7B42BC"/><path d="M10,12.5 L15.7,9.3 L15.7,15.8 L10,19 Z" fill="#7B42BC"/><path d="M10,5.6 L15.7,2.4 L15.7,8.9 L10,12.1 Z" fill="#7B42BC" opacity="0.65"/></symbol>
+  <symbol id="lg-helm" viewBox="0 0 24 24" overflow="visible"><circle cx="12" cy="12" r="8.4" fill="none" stroke="#0F1689" stroke-width="1.6"/><circle cx="12" cy="12" r="2.9" fill="none" stroke="#0F1689" stroke-width="1.4"/><path d="M12,3.6 V8.6 M12,15.4 V20.4 M3.6,12 H8.6 M15.4,12 H20.4 M6.05,6.05 L9.6,9.6 M14.4,14.4 L17.95,17.95 M17.95,6.05 L14.4,9.6 M9.6,14.4 L6.05,17.95" stroke="#0F1689" stroke-width="1.35" stroke-linecap="round"/></symbol>
+  <symbol id="lg-cassandra" viewBox="0 0 24 24" overflow="visible"><path d="M1.8,12 C5.2,5.6 18.8,5.6 22.2,12 C18.8,18.4 5.2,18.4 1.8,12 Z" fill="none" stroke="#1287B1" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.4" fill="#1287B1"/><path d="M12,3.2 V6.2 M12,17.8 V20.8" stroke="#1287B1" stroke-width="1.4" stroke-linecap="round"/></symbol>
+  <symbol id="lg-temporal" viewBox="0 0 24 24" overflow="visible"><circle cx="12" cy="12" r="9" fill="none" stroke="#127DF6" stroke-width="1.5" stroke-dasharray="42 14" transform="rotate(-45 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke="#127DF6" stroke-width="1.5" stroke-dasharray="25 9" transform="rotate(115 12 12)"/><circle cx="12" cy="12" r="1.9" fill="#127DF6"/></symbol>
+  <symbol id="lg-pg" viewBox="0 0 24 24" overflow="visible"><path d="M6.4,9.6 C6.4,5.9 8.9,3.3 12.2,3.3 C15.6,3.3 18.1,5.9 18.1,9.6 C18.1,11.8 17.3,13.5 16.1,14.9 L16.1,19.6 L13.9,19.6 L13.9,16.8 C13.4,16.95 12.85,17.05 12.3,17.05 L12.3,19.6 L10.1,19.6 L10.1,16.4 C7.9,15.2 6.4,12.7 6.4,9.6 Z" fill="none" stroke="#336791" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10.1" cy="8.6" r="1.15" fill="#336791"/><path d="M17.6,7.2 C19.4,6.4 20.8,7.6 20.2,9.2" fill="none" stroke="#336791" stroke-width="1.35" stroke-linecap="round"/></symbol>
+  <symbol id="lg-trino" viewBox="0 0 24 24" overflow="visible"><path d="M8.6,20.2 C5.6,20.2 3.6,18 3.6,15.2 C3.6,12.2 6,10.2 9.2,10.2 L15.4,10.2 C18,10.2 20.2,12.2 20.2,15.2 C20.2,18 18.2,20.2 15.2,20.2 Z" fill="none" stroke="#DD00A1" stroke-width="1.5" stroke-linejoin="round"/><path d="M8.4,10.4 L6.6,3.4 L11,7.8 M15.4,10.4 L17.2,3.4 L12.8,7.8" fill="none" stroke="#DD00A1" stroke-width="1.45" stroke-linejoin="round" stroke-linecap="round"/><circle cx="9.4" cy="15" r="1.15" fill="#DD00A1"/><circle cx="14.4" cy="15" r="1.15" fill="#DD00A1"/></symbol>
+  <symbol id="lg-gpu" viewBox="0 0 24 24" overflow="visible"><rect x="4.2" y="4.2" width="15.6" height="15.6" rx="2.6" fill="none" stroke="#76B900" stroke-width="1.6"/><rect x="8.4" y="8.4" width="7.2" height="7.2" rx="1.2" fill="#76B900"/><path d="M8.6,4.2 V1.8 M12,4.2 V1.8 M15.4,4.2 V1.8 M8.6,19.8 V22.2 M12,19.8 V22.2 M15.4,19.8 V22.2 M4.2,8.6 H1.8 M4.2,12 H1.8 M4.2,15.4 H1.8 M19.8,8.6 H22.2 M19.8,12 H22.2 M19.8,15.4 H22.2" stroke="#76B900" stroke-width="1.3" stroke-linecap="round"/></symbol>
+  <symbol id="lg-bucket" viewBox="0 0 24 24" overflow="visible"><ellipse cx="12" cy="6.4" rx="8.2" ry="3.1" fill="none" stroke="#0ca99b" stroke-width="1.5"/><path d="M3.8,6.4 L5.6,18.4 C5.9,20.1 8.6,21.2 12,21.2 C15.4,21.2 18.1,20.1 18.4,18.4 L20.2,6.4" fill="none" stroke="#0ca99b" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+  <symbol id="lg-db" viewBox="0 0 24 24" overflow="visible"><ellipse cx="12" cy="5.8" rx="7.8" ry="2.9" fill="none" stroke="#336791" stroke-width="1.5"/><path d="M4.2,5.8 V18.2 C4.2,19.8 7.7,21.1 12,21.1 C16.3,21.1 19.8,19.8 19.8,18.2 V5.8" fill="none" stroke="#336791" stroke-width="1.5"/><path d="M4.2,12 C4.2,13.6 7.7,14.9 12,14.9 C16.3,14.9 19.8,13.6 19.8,12" fill="none" stroke="#336791" stroke-width="1.3"/></symbol>
+  <symbol id="lg-aws" viewBox="0 0 24 24" overflow="visible"><path d="M2.2,13.4 C8,17.6 16,17.6 21.8,13.4" fill="none" stroke="#FF9900" stroke-width="2.6" stroke-linecap="round"/><path d="M18.4,11.2 L22.6,13.0 L19.9,16.6" fill="none" stroke="#FF9900" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/><text x="12" y="11.4" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11.5" font-weight="700" fill="#252F3E" text-anchor="middle" letter-spacing="-0.02em">aws</text></symbol>
+  <symbol id="lg-gcp" viewBox="0 0 24 24" overflow="visible"><path d="M12,2.8 L20.4,7.6 L20.4,16.4 L12,21.2 L3.6,16.4 L3.6,7.6 Z" fill="none" stroke="#7c8694" stroke-width="1.3" opacity="0.5"/><path d="M12,2.8 L20.4,7.6 L16.2,10 L12,7.6 Z" fill="#EA4335"/><path d="M20.4,7.6 L20.4,16.4 L16.2,14 L16.2,10 Z" fill="#FBBC04"/><path d="M20.4,16.4 L12,21.2 L12,16.4 L16.2,14 Z" fill="#34A853"/><path d="M12,21.2 L3.6,16.4 L7.8,14 L12,16.4 Z" fill="#4285F4"/><path d="M3.6,16.4 L3.6,7.6 L7.8,10 L7.8,14 Z" fill="#EA4335" opacity="0.75"/><path d="M3.6,7.6 L12,2.8 L12,7.6 L7.8,10 Z" fill="#4285F4" opacity="0.75"/></symbol>
+  <symbol id="lg-azure" viewBox="0 0 24 24" overflow="visible"><path d="M9.6,2.8 L16.6,2.8 L9.2,21.2 L2.4,21.2 L7.9,11.7 L11.3,11.7 Z" fill="#0078D4" opacity="0.9"/><path d="M12.6,6.6 L21.6,21.2 L11,21.2 L15.4,15.6 L12.2,15.6 Z" fill="#0078D4" opacity="0.55"/></symbol>
+  <symbol id="lg-omni" viewBox="0 0 24 24" overflow="visible"><circle cx="12" cy="12" r="9.2" fill="none" stroke="#38b601" stroke-width="1.6"/><path d="M12,2.8 C7,7 7,17 12,21.2 C17,17 17,7 12,2.8 Z" fill="none" stroke="#38b601" stroke-width="1.4"/><path d="M2.8,12 H21.2" stroke="#38b601" stroke-width="1.4"/><circle cx="12" cy="12" r="2.4" fill="#38b601"/></symbol>
+  <symbol id="lg-lock" viewBox="0 0 24 24" overflow="visible"><rect x="5.4" y="10.6" width="13.2" height="10" rx="2.2" fill="none" stroke="#d97706" stroke-width="1.6"/><path d="M8.4,10.6 V7.8 C8.4,5.6 10,4 12,4 C14,4 15.6,5.6 15.6,7.8 V10.6" fill="none" stroke="#d97706" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="15.2" r="1.7" fill="#d97706"/></symbol>
+</defs>
+
+<rect width="1400" height="1060" fill="#ffffff"/>
+
+<!-- ══ TITLE ═══════════════════════════════════════════════════════════ -->
+<text x="56" y="38" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="21" font-weight="700" fill="#111827" letter-spacing="-0.01em">Durable AI Platform</text>
+<text x="56" y="60" font-size="11.5" fill="#4b5563" letter-spacing="0.06em">two composed Omnistrate service plans · kubernetes operator + helm + terraform · aws · gcp · azure · byoc-account</text>
+<use href="#lg-omni" x="1352" y="22" width="26" height="26"/>
+
+<!-- ══ CONTROL PLANE ═══════════════════════════════════════════════════ -->
+<text x="56" y="96" font-size="12.5" fill="#4b5563" font-weight="600" letter-spacing="0.14em">OMNISTRATE CONTROL PLANE</text>
+
+<rect x="56" y="108" width="308" height="62" rx="10" fill="#f8fafc" stroke="#38b601" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-omni" x="72" y="126" width="22" height="22"/>
+<text x="104" y="133" font-size="13.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">orchestrator</text>
+<text x="104" y="151" font-size="11.5" fill="#1f2937">fleet state · deployment cells · dag</text>
+
+<rect x="380" y="108" width="308" height="62" rx="10" fill="#f8fafc" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.55"/>
+<text x="396" y="133" font-size="13.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">systemWorkflows</text>
+<text x="396" y="151" font-size="11.5" fill="#1f2937">create·modify·start·stop·backup·restore</text>
+
+<rect x="704" y="108" width="308" height="62" rx="10" fill="#f8fafc" stroke="#0ca99b" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-tf" x="720" y="126" width="22" height="22"/>
+<text x="752" y="133" font-size="13.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">opentofu runner</text>
+<text x="752" y="151" font-size="11.5" fill="#1f2937">per-cloud stacks · state in k8s secrets</text>
+
+<rect x="1028" y="108" width="316" height="62" rx="10" fill="#f8fafc" stroke="#d97706" stroke-width="1" stroke-opacity="0.55"/>
+<text x="1044" y="133" font-size="13.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">metering · stripe</text>
+<text x="1044" y="151" font-size="11.5" fill="#1f2937">cpu · memory · storage · gpu · replica</text>
+
+<!-- trust boundary -->
+<text x="700" y="196" font-size="11.5" fill="#38b601" text-anchor="middle" letter-spacing="0.16em" opacity="0.9">THE TRUST BOUNDARY · AGENT-INITIATED · OUTBOUND ONLY</text>
+<line x1="56" y1="208" x2="1344" y2="208" stroke="#2e9a03" stroke-width="1.2" opacity="0.7" stroke-dasharray="6 5"/>
+
+<text x="56" y="234" font-size="12.5" fill="#4b5563" font-weight="600" letter-spacing="0.14em">CUSTOMER CLOUD ACCOUNT · BYOC DATA PLANE · ONE DEPLOYMENT CELL</text>
+
+<!-- ══ PLAN 1 ══════════════════════════════════════════════════════════ -->
+<rect x="56" y="248" width="390" height="470" rx="14" fill="none" stroke="#8b5cf6" stroke-width="1.2" stroke-opacity="0.45" stroke-dasharray="7 5"/>
+<text x="76" y="276" font-size="12.5" fill="#8b5cf6" font-weight="700" letter-spacing="0.12em" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">PLAN 1 · MANAGED CASSANDRA</text>
+<text x="76" y="294" font-size="11.5" fill="#4b5563">operator plan · the lifecycle verbs own this plan, so no terraform here</text>
+
+<rect x="76" y="308" width="350" height="58" rx="10" fill="#f8fafc" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-k8s" x="92" y="324" width="22" height="22"/>
+<text x="124" y="332" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">k8ssandra-operator 1.32.6</text>
+<text x="124" y="350" font-size="11.5" fill="#1f2937">crds + controller · cell amenity · cert-manager</text>
+
+<rect x="76" y="382" width="350" height="58" rx="10" fill="#f8fafc" stroke="#8b5cf6" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-cassandra" x="92" y="398" width="22" height="22"/>
+<text x="124" y="406" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">K8ssandraCluster</text>
+<text x="124" y="424" font-size="11.5" fill="#1f2937">operatorCRDConfiguration · gated on Ready</text>
+
+<rect x="76" y="456" width="350" height="76" rx="10" fill="#f8fafc" stroke="#1287B1" stroke-width="1" stroke-opacity="0.5"/>
+<text x="94" y="478" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">cassandra 5.0.9 · temporal default store</text>
+<rect x="94" y="490" width="100" height="28" rx="6" fill="#ffffff" stroke="#1287B1" stroke-width="0.9" stroke-opacity="0.6"/>
+<text x="144" y="508" font-size="11.5" fill="#1f2937" text-anchor="middle">rack az-a</text>
+<rect x="204" y="490" width="100" height="28" rx="6" fill="#ffffff" stroke="#1287B1" stroke-width="0.9" stroke-opacity="0.6"/>
+<text x="254" y="508" font-size="11.5" fill="#1f2937" text-anchor="middle">rack az-b</text>
+<rect x="314" y="490" width="94" height="28" rx="6" fill="#ffffff" stroke="#1287B1" stroke-width="0.9" stroke-opacity="0.6"/>
+<text x="361" y="508" font-size="11.5" fill="#1f2937" text-anchor="middle">rack az-c</text>
+
+<rect x="76" y="548" width="350" height="58" rx="10" fill="#f8fafc" stroke="#0ca99b" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-bucket" x="92" y="564" width="22" height="22"/>
+<text x="124" y="572" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">medusa backups</text>
+<text x="124" y="590" font-size="11.5" fill="#1f2937">MedusaBackupJob writes to a bucket you supply</text>
+
+<rect x="76" y="622" width="350" height="58" rx="10" fill="#f8fafc" stroke="#d97706" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-lock" x="92" y="638" width="22" height="22"/>
+<text x="124" y="646" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">&lt;id&gt;-superuser</text>
+<text x="124" y="664" font-size="11.5" fill="#1f2937">the password you choose, which the operator adopts</text>
+
+<line x1="251" y1="366" x2="251" y2="378" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="251" y1="440" x2="251" y2="452" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="251" y1="532" x2="251" y2="544" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+
+<!-- ══ PLAN 2 ══════════════════════════════════════════════════════════ -->
+<rect x="478" y="248" width="866" height="470" rx="14" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-opacity="0.45" stroke-dasharray="7 5"/>
+<text x="498" y="276" font-size="12.5" fill="#2563eb" font-weight="700" letter-spacing="0.12em" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">PLAN 2 · TEMPORAL AI PLATFORM</text>
+<text x="498" y="294" font-size="11.5" fill="#4b5563">terraform + helm · nine resources · dependsOn dag · standard lifecycle</text>
+
+<!-- terraform row -->
+<rect x="498" y="308" width="198" height="62" rx="10" fill="#f8fafc" stroke="#0ca99b" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-tf" x="512" y="322" width="19" height="19"/>
+<text x="538" y="331" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">netAttach</text>
+<text x="512" y="350" font-size="11.5" fill="#1f2937">subnet grp · sg · endpoints</text>
+<text x="512" y="363" font-size="11.5" fill="#4b5563">attaches to the existing vpc</text>
+
+<rect x="706" y="308" width="198" height="62" rx="10" fill="#f8fafc" stroke="#0ca99b" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-bucket" x="720" y="322" width="19" height="19"/>
+<text x="746" y="331" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">storageInfra</text>
+<text x="720" y="350" font-size="11.5" fill="#1f2937">bucket + kms</text>
+<text x="720" y="363" font-size="11.5" fill="#4b5563">iceberg + model weights</text>
+
+<rect x="914" y="308" width="198" height="62" rx="10" fill="#f8fafc" stroke="#0ca99b" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-pg" x="928" y="322" width="19" height="19"/>
+<text x="954" y="331" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">visibilityDb</text>
+<text x="928" y="350" font-size="11.5" fill="#1f2937">managed postgres 16</text>
+<text x="928" y="363" font-size="11.5" fill="#4b5563">btree_gin · owning role</text>
+
+<rect x="1122" y="308" width="198" height="62" rx="10" fill="#f8fafc" stroke="#0ca99b" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-lock" x="1136" y="322" width="19" height="19"/>
+<text x="1162" y="331" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">identityInfra</text>
+<text x="1136" y="350" font-size="11.5" fill="#1f2937">irsa · wif · fed cred</text>
+<text x="1136" y="363" font-size="11.5" fill="#4b5563">keyless to bucket</text>
+
+<!-- schema -->
+<rect x="498" y="392" width="822" height="54" rx="10" fill="#f8fafc" stroke="#2563eb" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-helm" x="514" y="406" width="20" height="20"/>
+<text x="544" y="414" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">temporalSchema</text>
+<text x="544" y="431" font-size="11.5" fill="#1f2937">same chart, jobs only · cassandra keyspace then sql visibility schema · ordered initContainers</text>
+
+<!-- temporal server -->
+<rect x="498" y="468" width="822" height="92" rx="10" fill="#f8fafc" stroke="#127DF6" stroke-width="1.2" stroke-opacity="0.65"/>
+<use href="#lg-temporal" x="514" y="482" width="22" height="22"/>
+<text x="546" y="491" font-size="13.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">temporalServer</text>
+<text x="546" y="508" font-size="11.5" fill="#1f2937">chart 1.6.0 · appVersion 1.31.2 · fullnameOverride: temporal · customer-facing root</text>
+<rect x="514" y="518" width="150" height="28" rx="6" fill="#ffffff" stroke="#127DF6" stroke-width="0.9" stroke-opacity="0.55"/>
+<text x="589" y="536" font-size="11.5" fill="#1f2937" text-anchor="middle">frontend :7233</text>
+<rect x="674" y="518" width="150" height="28" rx="6" fill="#ffffff" stroke="#127DF6" stroke-width="0.9" stroke-opacity="0.55"/>
+<text x="749" y="536" font-size="11.5" fill="#1f2937" text-anchor="middle">history</text>
+<rect x="834" y="518" width="150" height="28" rx="6" fill="#ffffff" stroke="#127DF6" stroke-width="0.9" stroke-opacity="0.55"/>
+<text x="909" y="536" font-size="11.5" fill="#1f2937" text-anchor="middle">matching</text>
+<rect x="994" y="518" width="150" height="28" rx="6" fill="#ffffff" stroke="#127DF6" stroke-width="0.9" stroke-opacity="0.55"/>
+<text x="1069" y="536" font-size="11.5" fill="#1f2937" text-anchor="middle">worker</text>
+<rect x="1154" y="518" width="152" height="28" rx="6" fill="#ffffff" stroke="#127DF6" stroke-width="0.9" stroke-opacity="0.55"/>
+<text x="1230" y="536" font-size="11.5" fill="#1f2937" text-anchor="middle">web ui :8080</text>
+
+<!-- bottom row -->
+<rect x="498" y="586" width="266" height="76" rx="10" fill="#f8fafc" stroke="#d97706" stroke-width="1" stroke-opacity="0.6"/>
+<use href="#lg-gpu" x="514" y="602" width="21" height="21"/>
+<text x="544" y="611" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">vllmInference</text>
+<text x="514" y="632" font-size="11.5" fill="#1f2937">vllm-stack 0.1.12 · gpu node</text>
+<text x="514" y="648" font-size="11.5" fill="#1f2937">Qwen3.5-4B · apache-2.0</text>
+
+<rect x="776" y="586" width="266" height="76" rx="10" fill="#f8fafc" stroke="#127DF6" stroke-width="1" stroke-opacity="0.6"/>
+<use href="#lg-temporal" x="792" y="602" width="21" height="21"/>
+<text x="822" y="611" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">aiWorkers</text>
+<text x="792" y="632" font-size="11.5" fill="#1f2937">temporal python sdk</text>
+<text x="792" y="648" font-size="11.5" fill="#1f2937">one activity per llm call</text>
+
+<rect x="1054" y="586" width="266" height="76" rx="10" fill="#f8fafc" stroke="#DD00A1" stroke-width="1" stroke-opacity="0.5"/>
+<use href="#lg-trino" x="1070" y="602" width="21" height="21"/>
+<text x="1100" y="611" font-size="12.5" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">trino</text>
+<text x="1070" y="632" font-size="11.5" fill="#1f2937">chart 1.42.2 · image 483</text>
+<text x="1070" y="648" font-size="11.5" fill="#1f2937">cassandra + iceberg catalogs</text>
+
+<!-- plan2 internal dependency arrows -->
+<line x1="597" y1="370" x2="597" y2="388" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="805" y1="370" x2="805" y2="388" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="1013" y1="370" x2="1013" y2="388" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="1221" y1="370" x2="1221" y2="388" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="909" y1="446" x2="909" y2="464" stroke="#2563eb" stroke-width="1.2" marker-end="url(#ah-blue)"/>
+<line x1="631" y1="560" x2="631" y2="582" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="909" y1="560" x2="909" y2="582" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<line x1="1187" y1="560" x2="1187" y2="582" stroke="#7c8694" stroke-width="1.1" marker-end="url(#ah-faint)"/>
+<path d="M764,624 L776,624" stroke="#d97706" stroke-width="1.2" marker-end="url(#ah-faint)"/>
+
+<!-- ══ COMPOSITION CONTRACT ════════════════════════════════════════════ -->
+<line x1="251" y1="718" x2="251" y2="748" stroke="#0ca99b" stroke-width="1.4" marker-end="url(#ah-teal)"/>
+<line x1="911" y1="748" x2="911" y2="718" stroke="#0ca99b" stroke-width="1.4" marker-end="url(#ah-teal)"/>
+
+<rect x="56" y="748" width="1288" height="96" rx="14" fill="#f8fafc" stroke="#0ca99b" stroke-width="1.2" stroke-opacity="0.6" stroke-dasharray="7 5"/>
+<text x="76" y="776" font-size="12.5" fill="#0ca99b" font-weight="700" letter-spacing="0.12em" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">COMPOSITION CONTRACT</text>
+<text x="286" y="776" font-size="11.5" fill="#1f2937">the customer creates Cassandra first, then pastes its endpoint and credentials into the platform plan, since resource linking cannot span plans</text>
+
+<rect x="76" y="792" width="236" height="34" rx="7" fill="#ffffff" stroke="#7c8694" stroke-width="0.9" stroke-opacity="0.5"/>
+<text x="90" y="807" font-size="11.5" fill="#4b5563">cassandraHost</text>
+<text x="90" y="820" font-size="11.5" fill="#111827">&lt;id&gt;-dc1-service.&lt;ns&gt;.svc</text>
+
+<rect x="326" y="792" width="180" height="34" rx="7" fill="#ffffff" stroke="#7c8694" stroke-width="0.9" stroke-opacity="0.5"/>
+<text x="340" y="807" font-size="11.5" fill="#4b5563">cassandraPort</text>
+<text x="340" y="820" font-size="11.5" fill="#111827">9042</text>
+
+<rect x="520" y="792" width="200" height="34" rx="7" fill="#ffffff" stroke="#7c8694" stroke-width="0.9" stroke-opacity="0.5"/>
+<text x="534" y="807" font-size="11.5" fill="#4b5563">cassandraDatacenter</text>
+<text x="534" y="820" font-size="11.5" fill="#111827">dc1</text>
+
+<rect x="734" y="792" width="200" height="34" rx="7" fill="#ffffff" stroke="#7c8694" stroke-width="0.9" stroke-opacity="0.5"/>
+<text x="748" y="807" font-size="11.5" fill="#4b5563">cassandraKeyspace</text>
+<text x="748" y="820" font-size="11.5" fill="#111827">temporal</text>
+
+<rect x="948" y="792" width="230" height="34" rx="7" fill="#ffffff" stroke="#d97706" stroke-width="0.9" stroke-opacity="0.6"/>
+<text x="962" y="807" font-size="11.5" fill="#4b5563">cassandraPassword</text>
+<text x="962" y="820" font-size="11.5" fill="#111827">type: Password · never exported</text>
+
+<rect x="1192" y="792" width="136" height="34" rx="7" fill="#ffffff" stroke="#38b601" stroke-width="0.9" stroke-opacity="0.6"/>
+<text x="1206" y="807" font-size="11.5" fill="#4b5563">reachability</text>
+<text x="1206" y="820" font-size="11.5" fill="#111827">same cell · cql</text>
+
+<!-- ══ PER-CLOUD ═══════════════════════════════════════════════════════ -->
+<text x="56" y="882" font-size="12.5" fill="#4b5563" font-weight="600" letter-spacing="0.14em">PER-CLOUD TERRAFORM · ONE DIRECTORY PER CLOUD · BYTE-IDENTICAL OUTPUT KEYS</text>
+
+<rect x="56" y="894" width="418" height="130" rx="10" fill="#f8fafc" stroke="#FF9900" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-aws" x="74" y="908" width="24" height="24"/>
+<text x="108" y="925" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">amazon web services</text>
+<text x="74" y="951" font-size="11.5" fill="#1f2937">aws_s3_bucket · aws_kms_key</text>
+<text x="74" y="969" font-size="11.5" fill="#1f2937">aws_db_instance · postgres 16</text>
+<text x="74" y="987" font-size="11.5" fill="#1f2937">aws_iam_role · irsa via oidc</text>
+<text x="74" y="1007" font-size="11.5" fill="#38b601">medusa: role-based · keyless</text>
+
+<rect x="490" y="894" width="418" height="130" rx="10" fill="#f8fafc" stroke="#4285F4" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-gcp" x="508" y="908" width="24" height="24"/>
+<text x="542" y="925" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">google cloud</text>
+<text x="508" y="951" font-size="11.5" fill="#1f2937">google_storage_bucket · kms</text>
+<text x="508" y="969" font-size="11.5" fill="#1f2937">google_sql_database_instance</text>
+<text x="508" y="987" font-size="11.5" fill="#1f2937">google_service_account · wif</text>
+<text x="508" y="1007" font-size="11.5" fill="#38b601">medusa: role-based · keyless</text>
+
+<rect x="924" y="894" width="420" height="130" rx="10" fill="#f8fafc" stroke="#0078D4" stroke-width="1" stroke-opacity="0.55"/>
+<use href="#lg-azure" x="942" y="908" width="24" height="24"/>
+<text x="976" y="925" font-size="13" font-weight="700" fill="#111827" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">microsoft azure</text>
+<text x="942" y="951" font-size="11.5" fill="#1f2937">azurerm_storage_account · key vault</text>
+<text x="942" y="969" font-size="11.5" fill="#1f2937">azurerm_postgresql_flexible_server</text>
+<text x="942" y="987" font-size="11.5" fill="#1f2937">azurerm_federated_identity_credential</text>
+<text x="942" y="1007" font-size="11.5" fill="#d97706">medusa: static storage key · azure.extensions=btree_gin</text>
+
+<text x="1344" y="1046" font-size="11.5" fill="#4b5563" text-anchor="end">apache cassandra 5.0 · temporal 1.31 · vllm + qwen3.5 · trino 483 · apache-2.0 throughout</text>
+</svg>

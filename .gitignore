@@ -1,0 +1,116 @@
+# =============================================================================
+# Durable AI Platform
+# =============================================================================
+
+# --- Instance parameter files: THESE CARRY CREDENTIALS -----------------------
+# The --param-file inputs used when creating an instance contain the Cassandra
+# superuser password in cleartext, so they are ignored by name.
+#
+# Commit templates instead. `*.example.json` is not ignored:
+#   cassandra.example.json  ->  cp cassandra.example.json cassandra.json
+cassandra.json
+platform.json
+*.params.json
+params.json
+!*.example.json
+
+# --- Terraform / OpenTofu ----------------------------------------------------
+# .terraform/ holds provider binaries. The lock file is ignored because these
+# stacks run under OpenTofu on the platform side, where a lock pinned to a local
+# build would not apply. Versions are pinned in each module's versions.tf.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+# Omnistrate manages Terraform state, so these should not exist. Ignored as a
+# backstop in case someone runs a stack by hand.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Local variable files can carry DB passwords.
+*.tfvars
+*.tfvars.json
+!example.tfvars
+
+# --- Helm --------------------------------------------------------------------
+# Packaged chart artifacts. `local-artifacts/` is the destination the README
+# suggests for the pre-packaged form of the ai-worker local chart artifact; the
+# .tgz is a build output, not source.
+local-artifacts/
+*.tgz
+images/ai-worker/chart/charts/
+images/ai-worker/chart/Chart.lock
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Secrets and cloud credentials -------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/templates/*.key
+kubeconfig
+kubeconfig.*
+*.kubeconfig
+.omnistrate/
+# GCP service-account JSON keys. Anything matching is a live credential.
+# NOTE: gcloud names downloaded keys after the project, e.g.
+# `my-project-1a2b3c4d5e6f.json`, which no safe pattern can catch without
+# ignoring every .json in the repo. Move those outside the working tree; do not
+# rely on this list to save you.
+*sa-key.json
+*sa_key.json
+service-account*.json
+gcp-credentials*.json
+client_secret*.json
+
+# --- Editors and OS ----------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.netrwhist
+
+# --- Agent tooling -----------------------------------------------------------
+# Local skill/agent setup, not part of the deliverable. `.claude/skills/*` are
+# symlinks into `.agents/`, which would resolve wrongly for anyone cloning onto a
+# different layout anyway.
+.agents/
+.claude/
+skills-lock.json
+
+# --- Scratch -----------------------------------------------------------------
+scratch/
+tmp/
+*.log
+!seed/*.log

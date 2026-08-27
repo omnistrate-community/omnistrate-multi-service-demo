@@ -1,0 +1,26 @@
+# Durable AI Platform, ai-worker runtime dependencies.
+#
+# Every pin below was resolved against PyPI on 2026-08-26 and installed together into a
+# clean CPython 3.12.11 virtualenv with no resolver conflicts (pip exit 0).
+# Every pin publishes BOTH manylinux x86_64 and aarch64 wheels, so
+# `docker buildx build --platform linux/amd64,linux/arm64` needs no compiler in the image.
+
+# Temporal Python SDK. Ships cp310-abi3 wheels (manylinux_2_17 x86_64 + aarch64).
+temporalio==1.32.0
+
+# OpenAI-compatible client, talks to the vLLM `/v1` endpoint, not to OpenAI.
+openai==3.5.0
+
+# Cassandra / K8ssandra access. cp312 manylinux_2_28 wheels for x86_64 + aarch64.
+cassandra-driver==3.30.1
+
+# Iceberg writer. `pyarrow` extra pulls pyiceberg-core; `sql-postgres` extra pulls
+# SQLAlchemy + psycopg2-binary, which is what makes the JDBC catalog (shared with
+# Trino's `iceberg.catalog.type=jdbc`) work.
+pyiceberg[pyarrow,sql-postgres]==0.11.1
+
+# Pinned explicitly rather than left to the extras' floors, so the image is reproducible.
+pyarrow==25.0.1
+pyiceberg-core==0.8.0
+SQLAlchemy==2.0.52
+psycopg2-binary==2.9.12

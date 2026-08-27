@@ -1,0 +1,1244 @@
+# yaml-language-server: $schema=https://api.omnistrate.cloud/2022-09-01-00/schema/service-spec-schema.json
+# =============================================================================
+# Managed Cassandra
+#
+# A multi-rack Apache Cassandra cluster driven by the k8ssandra operator, with
+# create, scale, stop, start, backup, restore, repair and node recovery exposed
+# as instance actions. Backups go to a bucket the customer nominates.
+#
+# The Temporal AI Platform plan consumes an instance of this one. It needs four
+# values, which the customer reads off the instance and supplies there:
+#
+#   host        <instance-id>-dc1-service.<namespace>.svc.cluster.local
+#   port        9042
+#   datacenter  dc1
+#   password    the superuser password set when the instance was created
+#
+# `dc1` appears in three roles at once: the status key the readiness gate reads,
+# Medusa's target datacenter, and the local datacenter Temporal uses for
+# local_quorum routing. Keep it as written.
+#
+# ---------------------------------------------------------------------------
+# Replace before first use
+#   REPLACE_ME_AWS_ACCOUNT_ID          the AWS account designated Control Plane
+#   REPLACE_ME_AWS_BOOTSTRAP_ROLE_ARN  bootstrap role ARN in that account
+#   REPLACE_ME_STRIPE_PRODUCT_ID       Stripe product id for this plan
+#
+# ---------------------------------------------------------------------------
+# Prerequisite: cert-manager and then the k8ssandra operator install as
+# deployment cell amenities on every cell that can host an instance. Both are
+# cluster-scoped, so they belong to the cell rather than to an instance.
+# =============================================================================
+
+name: Managed Cassandra
+
+deployment:
+  # byoaDeployment places the control plane in an AWS account, whichever cloud
+  # the customer's instances run in.
+  byoaDeployment:
+    awsAccountId: "REPLACE_ME_AWS_ACCOUNT_ID"
+    awsBootstrapRoleAccountArn: "REPLACE_ME_AWS_BOOTSTRAP_ROLE_ARN"
+
+# Operator-managed plans run as CUSTOM_TENANCY.
+tenancyType: CUSTOM_TENANCY
+
+# Deleting the Cassandra instance while a Plan 2 instance is using it will
+# crash-loop Temporal, and the platform has no way to know the two are related
+# (there is no link object between plans). Deletion protection is the only guard
+# available, so it is on.
+enableDeletionProtection: true
+
+pricing:
+  - dimension: cpu
+    unit: cores
+    timeUnit: hour
+    price: 0.032
+  - dimension: memory
+    unit: GiB
+    timeUnit: hour
+    price: 0.008
+  - dimension: storage
+    unit: GiB
+    timeUnit: hour
+    price: 0.0002
+  - dimension: replica
+    timeUnit: hour
+    price: 0.05
+
+billingProviders:
+  - name: stripe
+    externalProductID: "REPLACE_ME_STRIPE_PRODUCT_ID"
+    isDefault: true
+    # Blocking instance creation until a payment method exists is the only
+    # billing behaviour that is instantaneous. Metering is hourly and invoices
+    # are monthly, so this is the paywall you can actually demonstrate live.
+    enablePaywall: false
+    disableInvoiceGeneration: false
+
+services:
+  - name: cassandraCluster
+    description: >-
+      A multi-rack Apache Cassandra cluster managed by k8ssandra-operator, with
+      Medusa backups to an object-storage bucket you supply. Serves as Temporal's
+      default persistence store in the Durable AI Platform.
+
+    capabilities:
+      # Declaring backupConfiguration REQUIRES backup + restore + deleteBackup
+      # to exist under systemWorkflows, or the build fails.
+      backupConfiguration:
+        backupRetentionInDays: 7
+        backupPeriodInHours: 24
+        snapshotBeforeDeletion: true
+      # One rack per availability zone. Mutually exclusive with enableCustomZone.
+      enableMultiZone: true
+
+    compute:
+      instanceTypes:
+        - name: r7g.xlarge
+          cloudProvider: aws
+        - name: n2-highmem-4
+          cloudProvider: gcp
+        - name: Standard_E4as_v5
+          cloudProvider: azure
+
+    apiParameters:
+      - key: clusterSize
+        name: Cluster Size
+        description: Number of Cassandra nodes in the datacenter. Use a multiple of the rack count so racks stay balanced.
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "3"
+
+      - key: serverVersion
+        name: Cassandra Version
+        description: >-
+          Cassandra server version. 5.0.9 is the newest with a published
+          cass-management-api UBI image. Temporal actively tests 3.11, 4.0 and
+          5.0.4+, so stay at or above 5.0.4.
+        type: String
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "5.0.9"
+
+      - key: superuserName
+        name: Superuser Name
+        description: Cassandra superuser role. Feeds the pre-created superuser Secret and cannot change after create.
+        type: String
+        required: false
+        # Name-feeding parameters must not be modifiable, changing one would
+        # rebuild identity rather than update it.
+        modifiable: false
+        export: true
+        defaultValue: "temporal"
+
+      - key: cassandraPassword
+        name: Superuser Password
+        description: >-
+          Password for the Cassandra superuser. You choose it, and you type the
+          same value into the Temporal AI Platform plan. It is never exported,
+          since exported values appear in result_params in plaintext.
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+
+      - key: storageClassName
+        name: Storage Class
+        description: StorageClass for the Cassandra data volumes. Leave blank to use the deployment cell's default.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "omnistrate-platform-default"
+
+      - key: storageSizeGi
+        name: Data Volume Size (GiB)
+        description: >-
+          Per-node data volume size. Not modifiable: PVC expansion depends on the
+          StorageClass allowing it, and a helm/CR update against a
+          non-expandable class is a silent no-op.
+        type: Float64
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "100"
+
+      - key: heapSizeGi
+        name: JVM Heap (GiB)
+        description: Cassandra JVM heap per node. Keep at or below half the node's memory.
+        type: Float64
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "8"
+
+      # --- Medusa backup target: supplied by the customer, not provisioned here ---
+      - key: backupBucketName
+        name: Backup Bucket Name
+        description: >-
+          Bucket (or Azure container's storage account container) that Medusa
+          writes backups to. The name only, with no scheme or path, since Medusa
+          takes a bucket name plus a prefix rather than a URI.
+        type: String
+        required: true
+        modifiable: false
+        export: true
+
+      - key: backupStorageProvider
+        name: Backup Storage Provider
+        description: Medusa storage backend matching the cloud you are deploying into.
+        type: String
+        required: true
+        modifiable: false
+        export: true
+        defaultValue: "s3"
+        options:
+          - s3
+          - google_storage
+          - azure_blobs
+        labeledOptions:
+          s3: "AWS S3"
+          google_storage: "Google Cloud Storage"
+          azure_blobs: "Azure Blob Storage"
+
+      - key: backupRegion
+        name: Backup Bucket Region
+        description: >-
+          Region of the backup bucket. Always set this on AWS: Medusa silently
+          forces us-east-1 when region is unset or the literal string "default",
+          which produces backups that appear to succeed against the wrong
+          endpoint.
+        type: String
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: "us-east-1"
+
+      - key: backupCredentialsType
+        name: Backup Credentials Mode
+        description: >-
+          How Medusa authenticates to the bucket. "role-based" is keyless and is
+          correct on AWS (IRSA) and GCP (Workload Identity). Azure must use
+          "static-secret": Medusa requires AZURE_STORAGE_ACCOUNT in its
+          environment and k8ssandra-operator overwrites the Medusa container spec
+          wholesale, so no env injection survives. See README known limitations.
+        type: String
+        required: false
+        modifiable: false
+        export: true
+        defaultValue: "role-based"
+        options:
+          - role-based
+          - static-secret
+        labeledOptions:
+          role-based: "Keyless (AWS IRSA / GCP Workload Identity)"
+          static-secret: "Static key (required on Azure)"
+
+      - key: medusaStorageAccount
+        name: Azure Storage Account
+        description: Azure storage account name holding the backup container. Azure only; leave blank elsewhere.
+        type: String
+        required: false
+        modifiable: true
+        export: true
+        defaultValue: ""
+        scope:
+          cloudProviders:
+            - azure
+
+      - key: medusaStorageKey
+        name: Azure Storage Account Key
+        description: >-
+          Access key for the Azure storage account. Azure only. This is the one
+          long-lived credential in the entire design and it exists because of an
+          upstream operator limitation, not a design choice.
+        type: Password
+        required: false
+        modifiable: true
+        export: false
+        scope:
+          cloudProviders:
+            - azure
+
+    operatorCRDConfiguration:
+      # Installs the operator and its CRDs. `helmChartDependencies` remains the
+      # supported mechanism; `template`/`supplementalFiles`/`readinessConditions`
+      # are deprecated in favour of systemWorkflows.
+      #
+      # NOTE ON CERT-MANAGER: this chart's templates/issuer.yaml and
+      # webhook-serving-cert.yaml have no conditional guards, and both webhooks
+      # are failurePolicy: Fail. cert-manager must therefore already exist on
+      # every deployment cell that can host an instance, installed as a cell
+      # amenity BEFORE the operator. It is not installed here, per-instance,
+      # because it is cluster-scoped and a second instance would collide.
+      helmChartDependencies:
+        - chartName: k8ssandra-operator
+          chartVersion: "1.32.6"
+          chartRepoName: k8ssandra
+          chartRepoURL: https://helm.k8ssandra.io/stable
+          chartValues:
+            global:
+              # One controller serving all tenant namespaces. Set at the cell
+              # level; per-instance controllers would fight over the same CRDs.
+              clusterScoped: true
+            cass-operator:
+              enabled: true
+
+      outputParameters:
+        # Non-secret half of the contract only. There is no per-entry export
+        # flag on outputParameters, so anything here is published in
+        # result_params in plaintext, never put the password here.
+        "Cassandra Datacenter": "dc1"
+        "Cassandra Port": "9042"
+        "Cassandra Keyspace": "temporal"
+
+    systemWorkflows:
+      # ---------------------------------------------------------------------
+      # CREATE
+      # Pre-create the superuser Secret FIRST, then apply the CR referencing it.
+      # k8ssandra-operator ADOPTS an existing superuserSecretRef rather than
+      # overwriting it (pkg/secret/replicated.go ReconcileSecret), which is what
+      # lets the customer's chosen password survive, and is what makes the
+      # cross-plan handoff possible without extracting a secret.
+      # ---------------------------------------------------------------------
+      create:
+        outputParameters:
+          progress: "$tasks.applycluster.resource.status.datacenters.dc1.cassandra.cassandraOperatorProgress"
+        workflow:
+          entrypoint: create
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+              - name: superuserName
+                value: "{{ $var.superuserName }}"
+              - name: cassandraPassword
+                value: "{{ $var.cassandraPassword }}"
+              - name: clusterSize
+                value: "{{ $var.clusterSize }}"
+              - name: serverVersion
+                value: "{{ $var.serverVersion }}"
+              - name: storageClassName
+                value: "{{ $var.storageClassName }}"
+              - name: storageSizeGi
+                value: "{{ $var.storageSizeGi }}"
+              - name: heapSizeGi
+                value: "{{ $var.heapSizeGi }}"
+              - name: backupBucketName
+                value: "{{ $var.backupBucketName }}"
+              - name: backupStorageProvider
+                value: "{{ $var.backupStorageProvider }}"
+              - name: backupRegion
+                value: "{{ $var.backupRegion }}"
+          templates:
+            - name: create
+              # A 3-node bootstrap runs 6-12 minutes. The default deadline is
+              # shorter than that.
+              activeDeadlineSeconds: 2700
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: superuserName
+                  - name: cassandraPassword
+                  - name: clusterSize
+                  - name: serverVersion
+                  - name: storageClassName
+                  - name: storageSizeGi
+                  - name: heapSizeGi
+                  - name: backupBucketName
+                  - name: backupStorageProvider
+                  - name: backupRegion
+              dag:
+                tasks:
+                  - name: applysecret
+                    template: applysuperusersecret
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                        - name: superuserName
+                          value: "{{inputs.parameters.superuserName}}"
+                        - name: cassandraPassword
+                          value: "{{inputs.parameters.cassandraPassword}}"
+                  - name: applycluster
+                    template: applyk8ssandracluster
+                    dependencies:
+                      - applysecret
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                        - name: clusterSize
+                          value: "{{inputs.parameters.clusterSize}}"
+                        - name: serverVersion
+                          value: "{{inputs.parameters.serverVersion}}"
+                        - name: storageClassName
+                          value: "{{inputs.parameters.storageClassName}}"
+                        - name: storageSizeGi
+                          value: "{{inputs.parameters.storageSizeGi}}"
+                        - name: heapSizeGi
+                          value: "{{inputs.parameters.heapSizeGi}}"
+                        - name: backupBucketName
+                          value: "{{inputs.parameters.backupBucketName}}"
+                        - name: backupStorageProvider
+                          value: "{{inputs.parameters.backupStorageProvider}}"
+                        - name: backupRegion
+                          value: "{{inputs.parameters.backupRegion}}"
+
+            - name: applysuperusersecret
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: superuserName
+                  - name: cassandraPassword
+              resource:
+                action: apply
+                manifest: |
+                  apiVersion: v1
+                  kind: Secret
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}-superuser"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  type: Opaque
+                  stringData:
+                    username: "{{inputs.parameters.superuserName}}"
+                    password: "{{inputs.parameters.cassandraPassword}}"
+
+            - name: applyk8ssandracluster
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: clusterSize
+                  - name: serverVersion
+                  - name: storageClassName
+                  - name: storageSizeGi
+                  - name: heapSizeGi
+                  - name: backupBucketName
+                  - name: backupStorageProvider
+                  - name: backupRegion
+              resource:
+                action: apply
+                # Flat dotted path, dot-free literal. The values are exactly
+                # "Updating" or "Ready", and Ready is set only after
+                # CheckConditionInitializedAndReady.
+                successCondition: status.datacenters.dc1.cassandra.cassandraOperatorProgress == Ready
+                manifest: |
+                  apiVersion: k8ssandra.io/v1alpha1
+                  kind: K8ssandraCluster
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandra:
+                      serverType: cassandra
+                      serverVersion: "{{inputs.parameters.serverVersion}}"
+                      superuserSecretRef:
+                        name: "{{inputs.parameters.instanceId}}-superuser"
+                      metadata:
+                        pods:
+                          labels:
+                            # The only CRD path that reaches the StatefulSet pod
+                            # template, and it merges rather than overwrites.
+                            # Omit this and Cassandra bills ZERO with no error.
+                            omnistrate.com/include-customer-billing: "true"
+                      storageConfig:
+                        # REQUIRED by the validating webhook (ErrNoStorageConfig).
+                        # Omitting it passes schema validation and is then
+                        # rejected at admission.
+                        cassandraDataVolumeClaimSpec:
+                          storageClassName: "{{inputs.parameters.storageClassName}}"
+                          accessModes:
+                            - ReadWriteOnce
+                          resources:
+                            requests:
+                              storage: "{{inputs.parameters.storageSizeGi}}Gi"
+                      config:
+                        jvmOptions:
+                          # heap_initial_size / heap_max_size, never the
+                          # deprecated heapSize.
+                          heap_initial_size: "{{inputs.parameters.heapSizeGi}}Gi"
+                          heap_max_size: "{{inputs.parameters.heapSizeGi}}Gi"
+                      datacenters:
+                        # dc1 is literal and load-bearing: it is simultaneously
+                        # the status map key gated on above, Medusa's target
+                        # datacenter, and Temporal's NetworkTopologyStrategy DC
+                        # name. Do not template it.
+                        - metadata:
+                            name: dc1
+                          size: "{{inputs.parameters.clusterSize}}"
+                          racks:
+                            - name: rack1
+                              nodeAffinityLabels:
+                                topology.kubernetes.io/zone: "{{ $sys.deploymentCell.availabilityZones[0].id }}"
+                            - name: rack2
+                              nodeAffinityLabels:
+                                topology.kubernetes.io/zone: "{{ $sys.deploymentCell.availabilityZones[1].id }}"
+                            - name: rack3
+                              nodeAffinityLabels:
+                                topology.kubernetes.io/zone: "{{ $sys.deploymentCell.availabilityZones[2].id }}"
+                    medusa:
+                      # The default installs a nightly purge that deletes
+                      # snapshots Omnistrate's retention still tracks, producing
+                      # phantom snapshots and wedged deleteBackup workflows.
+                      purgeBackups: false
+                      storageProperties:
+                        storageProvider: "{{inputs.parameters.backupStorageProvider}}"
+                        bucketName: "{{inputs.parameters.backupBucketName}}"
+                        prefix: "{{inputs.parameters.instanceId}}"
+                        region: "{{inputs.parameters.backupRegion}}"
+                        credentialsType: role-based
+
+      # ---------------------------------------------------------------------
+      # MODIFY, re-apply with the same metadata.name so the operator updates
+      # in place rather than creating a second cluster.
+      # ---------------------------------------------------------------------
+      modify:
+        workflow:
+          entrypoint: modify
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+              - name: clusterSize
+                value: "{{ $var.clusterSize }}"
+              - name: serverVersion
+                value: "{{ $var.serverVersion }}"
+              - name: heapSizeGi
+                value: "{{ $var.heapSizeGi }}"
+          templates:
+            - name: modify
+              activeDeadlineSeconds: 2700
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: clusterSize
+                  - name: serverVersion
+                  - name: heapSizeGi
+              dag:
+                tasks:
+                  - name: patchcluster
+                    template: patchk8ssandracluster
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                        - name: clusterSize
+                          value: "{{inputs.parameters.clusterSize}}"
+                        - name: serverVersion
+                          value: "{{inputs.parameters.serverVersion}}"
+                        - name: heapSizeGi
+                          value: "{{inputs.parameters.heapSizeGi}}"
+
+            - name: patchk8ssandracluster
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: clusterSize
+                  - name: serverVersion
+                  - name: heapSizeGi
+              resource:
+                action: patch
+                mergeStrategy: merge
+                successCondition: status.datacenters.dc1.cassandra.cassandraOperatorProgress == Ready
+                manifest: |
+                  apiVersion: k8ssandra.io/v1alpha1
+                  kind: K8ssandraCluster
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandra:
+                      serverVersion: "{{inputs.parameters.serverVersion}}"
+                      config:
+                        jvmOptions:
+                          heap_initial_size: "{{inputs.parameters.heapSizeGi}}Gi"
+                          heap_max_size: "{{inputs.parameters.heapSizeGi}}Gi"
+                      datacenters:
+                        - metadata:
+                            name: dc1
+                          size: "{{inputs.parameters.clusterSize}}"
+
+      # ---------------------------------------------------------------------
+      # STOP / START, the operator's native quiesce.
+      # ---------------------------------------------------------------------
+      stop:
+        workflow:
+          entrypoint: stop
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+          templates:
+            - name: stop
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              dag:
+                tasks:
+                  - name: patchstopped
+                    template: setstopped
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                        - name: stopped
+                          value: "true"
+
+            - name: setstopped
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: stopped
+              resource:
+                action: patch
+                mergeStrategy: merge
+                # No successCondition here, since cassandraOperatorProgress has
+                # no stopped state, so any gate here would wait forever against a
+                # correctly-stopped cluster.
+                manifest: |
+                  apiVersion: k8ssandra.io/v1alpha1
+                  kind: K8ssandraCluster
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandra:
+                      datacenters:
+                        - metadata:
+                            name: dc1
+                          stopped: {{inputs.parameters.stopped}}
+
+      start:
+        workflow:
+          entrypoint: start
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+          templates:
+            - name: start
+              activeDeadlineSeconds: 2700
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              dag:
+                tasks:
+                  - name: patchstarted
+                    template: setstarted
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+
+            - name: setstarted
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              resource:
+                action: patch
+                mergeStrategy: merge
+                successCondition: status.datacenters.dc1.cassandra.cassandraOperatorProgress == Ready
+                manifest: |
+                  apiVersion: k8ssandra.io/v1alpha1
+                  kind: K8ssandraCluster
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandra:
+                      datacenters:
+                        - metadata:
+                            name: dc1
+                          stopped: false
+
+      # ---------------------------------------------------------------------
+      # BACKUP
+      # Apply the MedusaBackupJob, then patch the MedusaBackup of the same name
+      # and gate on that.
+      #
+      # The order matters. The operator writes MedusaBackup status only when it
+      # finds no existing object, so creating one here leaves it without status.
+      # The Job carries no successCondition, since its status holds timestamps
+      # and string arrays the condition evaluator cannot match.
+      # ---------------------------------------------------------------------
+      backup:
+        outputParameters:
+          backupStatus: "$tasks.waitbackup.resource.status.status"
+          finishedTime: "$tasks.waitbackup.resource.status.finishTime"
+        workflow:
+          entrypoint: backup
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+              - name: snapshotId
+                value: "{{ $sys.snapshot.id }}"
+          templates:
+            - name: backup
+              # A full backup of a loaded cluster can exceed the default.
+              activeDeadlineSeconds: 7200
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: snapshotId
+              dag:
+                tasks:
+                  - name: startbackup
+                    template: applymedusabackupjob
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                        - name: snapshotId
+                          value: "{{inputs.parameters.snapshotId}}"
+                  - name: waitbackup
+                    template: waitmedusabackup
+                    dependencies:
+                      - startbackup
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: snapshotId
+                          value: "{{inputs.parameters.snapshotId}}"
+
+            - name: applymedusabackupjob
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: snapshotId
+              resource:
+                action: apply
+                # No successCondition, see the note above.
+                manifest: |
+                  apiVersion: medusa.k8ssandra.io/v1alpha1
+                  kind: MedusaBackupJob
+                  metadata:
+                    name: "{{inputs.parameters.snapshotId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandraDatacenter: dc1
+                    backupType: differential
+
+            - name: waitmedusabackup
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: snapshotId
+              resource:
+                # PATCH, never APPLY, see the note above.
+                action: patch
+                mergeStrategy: merge
+                successCondition: status.status == SUCCESS
+                failureCondition: status.status == FAILED
+                manifest: |
+                  apiVersion: medusa.k8ssandra.io/v1alpha1
+                  kind: MedusaBackup
+                  metadata:
+                    name: "{{inputs.parameters.snapshotId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+      # ---------------------------------------------------------------------
+      # RESTORE, build a NEW cluster whose Medusa prefix points at the SOURCE
+      # instance's backups, then fire the restore job.
+      # ---------------------------------------------------------------------
+      restore:
+        workflow:
+          entrypoint: restore
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: targetInstanceId
+                value: "{{ $sys.targetInstanceId }}"
+              - name: sourceInstanceId
+                value: "{{ $sys.sourceInstanceId }}"
+              - name: snapshotId
+                value: "{{ $sys.restore.snapshotId }}"
+              - name: superuserName
+                value: "{{ $var.superuserName }}"
+              - name: cassandraPassword
+                value: "{{ $var.cassandraPassword }}"
+              - name: clusterSize
+                value: "{{ $var.clusterSize }}"
+              - name: serverVersion
+                value: "{{ $var.serverVersion }}"
+              - name: storageClassName
+                value: "{{ $var.storageClassName }}"
+              - name: storageSizeGi
+                value: "{{ $var.storageSizeGi }}"
+              - name: heapSizeGi
+                value: "{{ $var.heapSizeGi }}"
+              - name: backupBucketName
+                value: "{{ $var.backupBucketName }}"
+              - name: backupStorageProvider
+                value: "{{ $var.backupStorageProvider }}"
+              - name: backupRegion
+                value: "{{ $var.backupRegion }}"
+          templates:
+            - name: restore
+              activeDeadlineSeconds: 7200
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: targetInstanceId
+                  - name: sourceInstanceId
+                  - name: snapshotId
+                  - name: superuserName
+                  - name: cassandraPassword
+                  - name: clusterSize
+                  - name: serverVersion
+                  - name: storageClassName
+                  - name: storageSizeGi
+                  - name: heapSizeGi
+                  - name: backupBucketName
+                  - name: backupStorageProvider
+                  - name: backupRegion
+              dag:
+                tasks:
+                  - name: applysecret
+                    template: applysuperusersecret
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.targetInstanceId}}"
+                        - name: superuserName
+                          value: "{{inputs.parameters.superuserName}}"
+                        - name: cassandraPassword
+                          value: "{{inputs.parameters.cassandraPassword}}"
+                  - name: applytarget
+                    template: applyrestoretarget
+                    dependencies:
+                      - applysecret
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: targetInstanceId
+                          value: "{{inputs.parameters.targetInstanceId}}"
+                        - name: sourceInstanceId
+                          value: "{{inputs.parameters.sourceInstanceId}}"
+                        - name: clusterSize
+                          value: "{{inputs.parameters.clusterSize}}"
+                        - name: serverVersion
+                          value: "{{inputs.parameters.serverVersion}}"
+                        - name: storageClassName
+                          value: "{{inputs.parameters.storageClassName}}"
+                        - name: storageSizeGi
+                          value: "{{inputs.parameters.storageSizeGi}}"
+                        - name: heapSizeGi
+                          value: "{{inputs.parameters.heapSizeGi}}"
+                        - name: backupBucketName
+                          value: "{{inputs.parameters.backupBucketName}}"
+                        - name: backupStorageProvider
+                          value: "{{inputs.parameters.backupStorageProvider}}"
+                        - name: backupRegion
+                          value: "{{inputs.parameters.backupRegion}}"
+                  - name: applyrestore
+                    template: applymedusarestorejob
+                    dependencies:
+                      - applytarget
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: targetInstanceId
+                          value: "{{inputs.parameters.targetInstanceId}}"
+                        - name: snapshotId
+                          value: "{{inputs.parameters.snapshotId}}"
+
+            - name: applysuperusersecret
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: superuserName
+                  - name: cassandraPassword
+              resource:
+                action: apply
+                manifest: |
+                  apiVersion: v1
+                  kind: Secret
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}-superuser"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  type: Opaque
+                  stringData:
+                    username: "{{inputs.parameters.superuserName}}"
+                    password: "{{inputs.parameters.cassandraPassword}}"
+
+            - name: applyrestoretarget
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: targetInstanceId
+                  - name: sourceInstanceId
+                  - name: clusterSize
+                  - name: serverVersion
+                  - name: storageClassName
+                  - name: storageSizeGi
+                  - name: heapSizeGi
+                  - name: backupBucketName
+                  - name: backupStorageProvider
+                  - name: backupRegion
+              resource:
+                action: apply
+                successCondition: status.datacenters.dc1.cassandra.cassandraOperatorProgress == Ready
+                manifest: |
+                  apiVersion: k8ssandra.io/v1alpha1
+                  kind: K8ssandraCluster
+                  metadata:
+                    name: "{{inputs.parameters.targetInstanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandra:
+                      serverType: cassandra
+                      serverVersion: "{{inputs.parameters.serverVersion}}"
+                      superuserSecretRef:
+                        name: "{{inputs.parameters.targetInstanceId}}-superuser"
+                      metadata:
+                        pods:
+                          labels:
+                            omnistrate.com/include-customer-billing: "true"
+                      storageConfig:
+                        cassandraDataVolumeClaimSpec:
+                          storageClassName: "{{inputs.parameters.storageClassName}}"
+                          accessModes:
+                            - ReadWriteOnce
+                          resources:
+                            requests:
+                              storage: "{{inputs.parameters.storageSizeGi}}Gi"
+                      config:
+                        jvmOptions:
+                          heap_initial_size: "{{inputs.parameters.heapSizeGi}}Gi"
+                          heap_max_size: "{{inputs.parameters.heapSizeGi}}Gi"
+                      datacenters:
+                        - metadata:
+                            name: dc1
+                          size: "{{inputs.parameters.clusterSize}}"
+                    medusa:
+                      purgeBackups: false
+                      storageProperties:
+                        storageProvider: "{{inputs.parameters.backupStorageProvider}}"
+                        bucketName: "{{inputs.parameters.backupBucketName}}"
+                        # Points at the SOURCE instance's backups, this is what
+                        # makes the restore read the right prefix.
+                        prefix: "{{inputs.parameters.sourceInstanceId}}"
+                        region: "{{inputs.parameters.backupRegion}}"
+                        credentialsType: role-based
+
+            - name: applymedusarestorejob
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: targetInstanceId
+                  - name: snapshotId
+              resource:
+                action: apply
+                successCondition: status.finished == true
+                manifest: |
+                  apiVersion: medusa.k8ssandra.io/v1alpha1
+                  kind: MedusaRestoreJob
+                  metadata:
+                    name: "restore-{{inputs.parameters.snapshotId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    cassandraDatacenter: dc1
+                    backup: "{{inputs.parameters.snapshotId}}"
+
+      # ---------------------------------------------------------------------
+      # DELETE BACKUP, remove both objects. A failed deleteBackup wedges
+      # instance deletion, because the delete flow runs retention cleanup first.
+      # ---------------------------------------------------------------------
+      deleteBackup:
+        workflow:
+          entrypoint: deletebackup
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: snapshotId
+                value: "{{ $sys.snapshot.id }}"
+          templates:
+            - name: deletebackup
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: snapshotId
+              dag:
+                tasks:
+                  - name: deletejob
+                    template: deletemedusabackupjob
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: snapshotId
+                          value: "{{inputs.parameters.snapshotId}}"
+                  - name: deletebackupobj
+                    template: deletemedusabackup
+                    dependencies:
+                      - deletejob
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: snapshotId
+                          value: "{{inputs.parameters.snapshotId}}"
+
+            - name: deletemedusabackupjob
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: snapshotId
+              resource:
+                action: delete
+                manifest: |
+                  apiVersion: medusa.k8ssandra.io/v1alpha1
+                  kind: MedusaBackupJob
+                  metadata:
+                    name: "{{inputs.parameters.snapshotId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+            - name: deletemedusabackup
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: snapshotId
+              resource:
+                action: delete
+                manifest: |
+                  apiVersion: medusa.k8ssandra.io/v1alpha1
+                  kind: MedusaBackup
+                  metadata:
+                    name: "{{inputs.parameters.snapshotId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+      # ---------------------------------------------------------------------
+      # DELETE, CR first, then the superuser Secret (dependencies order it).
+      # ---------------------------------------------------------------------
+      delete:
+        workflow:
+          entrypoint: delete
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+          templates:
+            - name: delete
+              activeDeadlineSeconds: 1800
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              dag:
+                tasks:
+                  - name: deletecluster
+                    template: deletek8ssandracluster
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                  - name: deletesecret
+                    template: deletesuperusersecret
+                    dependencies:
+                      - deletecluster
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+
+            - name: deletek8ssandracluster
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              resource:
+                action: delete
+                manifest: |
+                  apiVersion: k8ssandra.io/v1alpha1
+                  kind: K8ssandraCluster
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+            - name: deletesuperusersecret
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              resource:
+                action: delete
+                manifest: |
+                  apiVersion: v1
+                  kind: Secret
+                  metadata:
+                    name: "{{inputs.parameters.instanceId}}-superuser"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+      # ---------------------------------------------------------------------
+      # FAILOVER, delete the failed pod and let the operator rebuild it.
+      # ---------------------------------------------------------------------
+      failover:
+        workflow:
+          entrypoint: failover
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: failedReplicaId
+                value: "{{ $var.failedReplicaId }}"
+          templates:
+            - name: failover
+              activeDeadlineSeconds: 1800
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: failedReplicaId
+              dag:
+                tasks:
+                  - name: deletepod
+                    template: deletefailedpod
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: failedReplicaId
+                          value: "{{inputs.parameters.failedReplicaId}}"
+
+            - name: deletefailedpod
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: failedReplicaId
+              resource:
+                action: delete
+                manifest: |
+                  apiVersion: v1
+                  kind: Pod
+                  metadata:
+                    name: "{{inputs.parameters.failedReplicaId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+    # -----------------------------------------------------------------------
+    # Provider-defined verb. A repair is the single most common Cassandra day-2
+    # operation and it demos well: it is visibly a distributed operation.
+    # -----------------------------------------------------------------------
+    customWorkflows:
+      - verb: repair
+        displayName: Run anti-entropy repair
+        description: >-
+          Runs `nodetool repair` on the datacenter via a Cassandra Task. Use after
+          a node replacement or when read repair has fallen behind.
+        scope:
+          - fleet
+        # customWorkflows[].apiParameters takes `displayName` rather than
+        # `name`, and does not accept `export`.
+        apiParameters:
+          - key: repairKeyspace
+            displayName: Keyspace
+            description: Keyspace to repair. Leave blank to repair all keyspaces.
+            type: String
+            required: false
+            modifiable: true
+            defaultValue: "temporal"
+        workflow:
+          entrypoint: repair
+          arguments:
+            parameters:
+              - name: namespace
+                value: "{{ $sys.namespace }}"
+              - name: instanceId
+                value: "{{ $sys.id }}"
+              - name: repairKeyspace
+                value: "{{ $var.repairKeyspace }}"
+          templates:
+            - name: repair
+              activeDeadlineSeconds: 7200
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: repairKeyspace
+              dag:
+                tasks:
+                  - name: applyrepairtask
+                    template: applycassandratask
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+                        - name: repairKeyspace
+                          value: "{{inputs.parameters.repairKeyspace}}"
+
+            - name: applycassandratask
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+                  - name: repairKeyspace
+              resource:
+                action: apply
+                # CassandraTask exposes a flat status.succeeded counter.
+                successCondition: status.succeeded == 1
+                manifest: |
+                  apiVersion: control.k8ssandra.io/v1alpha1
+                  kind: CassandraTask
+                  metadata:
+                    name: "repair-{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+                  spec:
+                    datacenter:
+                      name: dc1
+                      namespace: "{{inputs.parameters.namespace}}"
+                    jobs:
+                      - name: repair
+                        command: repair
+                        args:
+                          keyspace_name: "{{inputs.parameters.repairKeyspace}}"

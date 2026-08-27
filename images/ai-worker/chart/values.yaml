@@ -1,0 +1,160 @@
+# =============================================================================
+# ai-worker, values
+#
+# This file is the authoritative list of what the worker can be configured with.
+# Every key below maps to exactly one environment variable read by worker.py's
+# `_Settings.from_env`; the mapping lives in templates/deployment.yaml and the
+# names are asserted against `grep` output from worker.py, not assumed.
+#
+# The Omnistrate plan spec (plans/plan2-temporal-ai-platform.yaml, resource
+# `aiWorkers`) sets: replicaCount, image.*, serviceAccount.annotations, podLabels,
+# temporal.*, vllm.*, cassandra.*, storage.bucketUri.
+# =============================================================================
+
+replicaCount: 3
+
+image:
+  # REPLACE_ME_REGISTRY, see images/ai-worker/README.md for the build+push flow.
+  repository: REPLACE_ME_REGISTRY/ai-worker
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  # The plan spec injects the cloud-appropriate workload-identity annotation
+  # here, e.g. eks.amazonaws.com/role-arn on AWS. Only the KEY differs per
+  # cloud; the value is the same templated Terraform output everywhere.
+  annotations: {}
+
+# Extra labels on the POD TEMPLATE. This is where the Omnistrate billing label
+# goes, `omnistrate.com/include-customer-billing: "true"`. A label on the
+# Deployment or an annotation does not count, and omitting it means this tier
+# bills ZERO with no error anywhere.
+podLabels: {}
+podAnnotations: {}
+
+# ---------------------------------------------------------------------------
+# Temporal
+# ---------------------------------------------------------------------------
+temporal:
+  # Deterministic because the platform plan pins `fullnameOverride: temporal` on
+  # the Temporal release, making the frontend Service name knowable in advance.
+  # It has to be knowable: Helm resources emit no outputs in Omnistrate, so this
+  # address cannot be read from the upstream release.
+  address: temporal-frontend:7233
+  namespace: default
+  taskQueue: ai-triage
+  # Only for Temporal Cloud; empty for the in-cluster server.
+  apiKey: ""
+
+# ---------------------------------------------------------------------------
+# vLLM (OpenAI-compatible endpoint)
+# ---------------------------------------------------------------------------
+vllm:
+  baseUrl: http://vllm-engine-service:80/v1
+  model: qwen
+  apiKey: ""
+
+# ---------------------------------------------------------------------------
+# Cassandra, the same cluster Temporal uses as its default store, and the same
+# contact point the customer pasted in from their Managed Cassandra instance.
+# The worker uses its OWN keyspace; it does not touch Temporal's.
+# ---------------------------------------------------------------------------
+cassandra:
+  hosts: ""
+  port: 9042
+  keyspace: ai_platform
+  user: temporal
+  password: ""
+  datacenter: dc1
+  consistency: LOCAL_QUORUM
+
+# ---------------------------------------------------------------------------
+# Object storage + Iceberg
+#
+# The Iceberg catalog is JDBC-backed on the same Postgres server the platform
+# already provisioned, with the same catalog name Trino reads
+# (`iceberg.jdbc-catalog.catalog-name=ai_platform`). Sharing one catalog is the
+# point: the worker writes and Trino queries the same tables.
+# ---------------------------------------------------------------------------
+storage:
+  bucketUri: ""
+  region: ""
+
+iceberg:
+  catalogName: ai_platform
+  namespace: triage
+  table: triage_analytics
+  # Postgres backing the JDBC catalog. Wired from the visibilityDb outputs.
+  pgHostPort: ""
+  pgDatabase: ""
+  pgUser: ""
+  pgPassword: ""
+  pgSslMode: require
+  # Extra FileIO properties as a JSON object string, for the rare case where the
+  # default credential chain is not enough.
+  fileIoProperties: ""
+
+# ---------------------------------------------------------------------------
+# Runtime
+# ---------------------------------------------------------------------------
+logLevel: INFO
+
+ports:
+  health: 8080
+  metrics: 9090
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# The worker is stateless and horizontally scalable, this tier is the one you
+# scale under load, independently of the Temporal control plane.
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+livenessProbe:
+  initialDelaySeconds: 20
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Extra env passthrough for anything not modelled above.
+extraEnv: []

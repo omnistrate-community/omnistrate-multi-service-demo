@@ -1,0 +1,48 @@
+{{/*
+Non-secret configuration only. Credentials live in the Secret in secret.yaml,
+since a ConfigMap is readable by anything with get on the namespace.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ai-worker.fullname" . }}
+  labels:
+    {{- include "ai-worker.labels" . | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.logLevel | quote }}
+  HEALTH_PORT: {{ .Values.ports.health | quote }}
+  METRICS_PORT: {{ .Values.ports.metrics | quote }}
+
+  # --- Temporal ---
+  TEMPORAL_ADDRESS: {{ .Values.temporal.address | quote }}
+  TEMPORAL_NAMESPACE: {{ .Values.temporal.namespace | quote }}
+  TEMPORAL_TASK_QUEUE: {{ .Values.temporal.taskQueue | quote }}
+
+  # --- vLLM ---
+  VLLM_BASE_URL: {{ .Values.vllm.baseUrl | quote }}
+  VLLM_MODEL: {{ .Values.vllm.model | quote }}
+
+  # --- Cassandra (non-secret half) ---
+  CASSANDRA_CONTACT_POINTS: {{ .Values.cassandra.hosts | quote }}
+  CASSANDRA_KEYSPACE: {{ .Values.cassandra.keyspace | quote }}
+  CASSANDRA_USERNAME: {{ .Values.cassandra.user | quote }}
+  CASSANDRA_DATACENTER: {{ .Values.cassandra.datacenter | quote }}
+  CASSANDRA_CONSISTENCY: {{ .Values.cassandra.consistency | quote }}
+
+  # --- Object storage + Iceberg (non-secret half) ---
+  ICEBERG_WAREHOUSE_URI: {{ .Values.storage.bucketUri | quote }}
+  OBJECT_STORE_REGION: {{ .Values.storage.region | quote }}
+  {{- if .Values.storage.region }}
+  # The AWS SDK reads AWS_REGION; mirrored so one values key covers all clouds.
+  AWS_REGION: {{ .Values.storage.region | quote }}
+  {{- end }}
+  ICEBERG_CATALOG_NAME: {{ .Values.iceberg.catalogName | quote }}
+  ICEBERG_NAMESPACE: {{ .Values.iceberg.namespace | quote }}
+  ICEBERG_TABLE: {{ .Values.iceberg.table | quote }}
+  ICEBERG_PG_HOST_PORT: {{ .Values.iceberg.pgHostPort | quote }}
+  ICEBERG_PG_DATABASE: {{ .Values.iceberg.pgDatabase | quote }}
+  ICEBERG_PG_USER: {{ .Values.iceberg.pgUser | quote }}
+  ICEBERG_PG_SSLMODE: {{ .Values.iceberg.pgSslMode | quote }}
+  {{- with .Values.iceberg.fileIoProperties }}
+  ICEBERG_FILEIO_PROPERTIES: {{ . | quote }}
+  {{- end }}
