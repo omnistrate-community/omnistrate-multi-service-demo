@@ -57,13 +57,13 @@ variable "private_dns_zone_id" {
 }
 
 variable "pg_version" {
-  description = "PostgreSQL major version. Temporal actively tests 13.18 / 14.15 / 15.10 / 16.6; 17 and 18 are untested by Temporal. Stay on 16."
+  description = "PostgreSQL major version. Temporal's SQL plugin targets PostgreSQL 12 and later."
   type        = string
-  default     = "16"
+  default     = "17"
 
   validation {
-    condition     = contains(["13", "14", "15", "16"], var.pg_version)
-    error_message = "pg_version must be one of 13, 14, 15, 16, the majors Temporal tests against."
+    condition     = contains(["13", "14", "15", "16", "17"], var.pg_version)
+    error_message = "pg_version must be one of 13, 14, 15, 16, 17."
   }
 }
 

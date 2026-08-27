@@ -28,13 +28,13 @@ variable "db_security_group_id" {
 # -- engine -----------------------------------------------------------------
 
 variable "engine_version" {
-  description = "PostgreSQL major (or major.minor) version. Temporal actively tests 13.18 / 14.15 / 15.10 / 16.6, 17 and 18 are untested, so this stays on 16. A major-only value lets RDS pick the newest available 16.x minor, which matters because AWS blocks new instances on retired minors."
+  description = "PostgreSQL major (or major.minor) version. Temporal's SQL plugin targets PostgreSQL 12 and later. A major-only value lets RDS pick the newest available minor, which matters because AWS blocks new instances on retired minors."
   type        = string
-  default     = "16"
+  default     = "17"
 
   validation {
-    condition     = can(regex("^16(\\.[0-9]+)?$", var.engine_version))
-    error_message = "engine_version must be 16 or 16.x. Temporal does not test PostgreSQL 17 or 18."
+    condition     = can(regex("^(1[6-8])(\\.[0-9]+)?$", var.engine_version))
+    error_message = "engine_version must be a PostgreSQL 16, 17 or 18 major, optionally with a minor."
   }
 }
 

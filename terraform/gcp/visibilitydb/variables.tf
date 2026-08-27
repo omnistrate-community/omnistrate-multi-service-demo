@@ -56,11 +56,11 @@ variable "db_security_group_id" {
 
 variable "database_version" {
   description = <<-EOT
-    Temporal actively tests PostgreSQL 13.18 / 14.15 / 15.10 / 16.6. 17 and 18
+    Temporal's SQL plugin targets PostgreSQL 12 and later
     are untested by Temporal. Pin 16.
   EOT
   type        = string
-  default     = "POSTGRES_16"
+  default     = "POSTGRES_17"
 }
 
 variable "tier" {

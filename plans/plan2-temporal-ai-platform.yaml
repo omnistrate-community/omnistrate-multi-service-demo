@@ -190,7 +190,7 @@ services:
   # ===========================================================================
   - name: visibilityDb
     internal: true
-    description: Managed PostgreSQL 16 for Temporal's visibility store and the Iceberg JDBC catalog.
+    description: Managed PostgreSQL 17 for Temporal's visibility store and the Iceberg JDBC catalog.
     dependsOn:
       - netAttach
     terraformConfigurations:
@@ -561,6 +561,11 @@ services:
         web:
           enabled: true
           replicaCount: 1
+          image:
+            # Chart 1.6.0 defaults the UI to 2.52.0; this tracks the current
+            # release. The server and admin-tools images already match the
+            # chart's appVersion, so only the UI needs overriding.
+            tag: "2.53.3"
         admintools:
           enabled: true
 

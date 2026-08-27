@@ -87,7 +87,7 @@ plans/
 terraform/{aws,gcp,azure}/
   netattach/                        attaches to the cell's existing network
   storage/                          bucket and CMK
-  visibilitydb/                     managed PostgreSQL 16, two databases
+  visibilitydb/                     managed PostgreSQL 17, two databases
   identity/                         IRSA, GKE Workload Identity, Azure federated credential
 images/ai-worker/                   the Temporal worker image and its Helm chart
 seed/seed-demo.sh                   loads sample workflow history into a running instance

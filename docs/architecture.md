@@ -30,7 +30,7 @@ worker produced it.
 rack per availability zone. Temporal writes a row per state transition rather than per workflow, so the
 store sees a high volume of append-only writes with no joins.
 
-**PostgreSQL 16** holds Temporal's searchable visibility index, and a second database on the same
+**PostgreSQL 17** holds Temporal's searchable visibility index, and a second database on the same
 instance backs Trino's Iceberg catalog.
 
 **Object storage** holds three things: the Iceberg warehouse Trino reads, the model weights vLLM
