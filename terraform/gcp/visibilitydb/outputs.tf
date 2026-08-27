@@ -59,9 +59,9 @@ output "pg_password" {
     Marked sensitive so it is redacted from plan/apply logs. Do NOT list this
     key under `requiredOutputs` with `exported: true`: exported values land in
     `result_params` in plaintext and there is no per-entry export flag to stop
-    them. It is consumed only as `{{ $visibilityDb.out.pg_password }}` inside
-    chartValues on an `internal: true` resource, which never surfaces to the
-    customer.
+    them. It is consumed as `{{ $visibilityDb.out.pg_password }}` in
+    temporalServer's chartValues and in trino's layeredChartValues, and chart
+    values are not surfaced to the customer.
   EOT
   value       = local.pg_password
   sensitive   = true

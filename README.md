@@ -97,8 +97,15 @@ docs/
   architecture.svg, .png, .html     the diagram
 ```
 
-The fourteen core Terraform output keys are spelled identically across all three clouds, which is what
-lets the Helm layer reference `{{ $storageInfra.out.bucket_uri }}` once and never branch on provider.
+The fourteen core Terraform output keys are spelled identically across all three clouds, so the base
+Helm values reference `{{ $storageInfra.out.bucket_uri }}` once for every provider. The differences
+that survive that are carried in `layeredChartValues` layers gated on
+`$sys.deploymentCell.cloudProviderName`: the workload-identity annotation key, Trino's filesystem
+switch and Iceberg catalog, and Azure's second `abfss://` form of the same container.
+
+The `.tf` files themselves hold no `$sys`, `$var` or `.out.` expressions, so each module runs under
+plain `tofu apply` outside the platform. Each cloud's values arrive as a `.tfvars` string in
+`variablesValuesFileOverride` on that cloud's `terraformConfigurations` entry.
 
 ## Deploying
 

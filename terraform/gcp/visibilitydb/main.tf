@@ -44,6 +44,10 @@
 //          gcp:
 //            terraformPath: /terraform/gcp/visibilitydb
 //            variablesValuesFileOverride: |
+//              project_id           = "{{ $sys.deploymentCell.gcp.projectID }}"
+//              region               = "{{ $sys.deploymentCell.region }}"
+//              network              = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+//              instance_id          = "{{ $sys.id }}"
 //              db_subnet_group_name = "{{ $netAttach.out.db_subnet_group_name }}"
 //              db_security_group_id = "{{ $netAttach.out.db_security_group_id }}"
 //            gitConfiguration:

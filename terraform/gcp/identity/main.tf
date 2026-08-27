@@ -52,6 +52,11 @@
 //          gcp:
 //            terraformPath: /terraform/gcp/identity
 //            variablesValuesFileOverride: |
+//              project_id  = "{{ $sys.deploymentCell.gcp.projectID }}"
+//              region      = "{{ $sys.deploymentCell.region }}"
+//              instance_id = "{{ $sys.id }}"
+//              namespace   = "{{ $sys.deployment.resourceKubernetesNamespace }}"
+//              ksa_names   = ["{{ $sys.deployment.kubernetesServiceAccountName }}", "ai-worker", "default"]
 //              bucket_name = "{{ $storageInfra.out.bucket_name }}"
 //            gitConfiguration:
 //              reference: refs/tags/vX.Y.Z

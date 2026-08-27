@@ -72,8 +72,12 @@ the Temporal server, vLLM, the AI workers and Trino.
 
 ## Across the three clouds
 
-The Terraform output keys are spelled identically on AWS, GCP and Azure, so the Helm layer references
-`{{ $storageInfra.out.bucket_uri }}` once and deploys unchanged to all three.
+The Terraform output keys are spelled identically on AWS, GCP and Azure, so the base Helm values
+reference `{{ $storageInfra.out.bucket_uri }}` once for all three. What genuinely differs per cloud
+sits in scoped `layeredChartValues` layers on `aiWorkers` and `trino`: the workload-identity
+annotation key, Trino's filesystem switch and Iceberg catalog, and Azure's `abfss://` form of the
+same container. The `.tf` files carry no Omnistrate expressions; each cloud's values arrive as a
+`.tfvars` string in `variablesValuesFileOverride`.
 
 | Layer | AWS | GCP | Azure |
 | --- | --- | --- | --- |

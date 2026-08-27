@@ -1,29 +1,28 @@
 // -----------------------------------------------------------------------------
 // visibilityDb (GCP), inputs
+//
+// Plain portable Terraform. The variables with no default are supplied by the
+// plan spec through `variablesValuesFileOverride`.
 // -----------------------------------------------------------------------------
 
 variable "project_id" {
-  description = "GCP project that owns the Cloud SQL instance."
+  description = "GCP project that owns the Cloud SQL instance. Wired from `$sys.deploymentCell.gcp.projectID`."
   type        = string
-  default     = "{{ $sys.deploymentCell.gcp.projectID }}"
 }
 
 variable "region" {
-  description = "Deployment cell region. Must match the region of the VPC the PSA peering was created in."
+  description = "Deployment cell region, from `$sys.deploymentCell.region`. Must match the region of the VPC the PSA peering was created in."
   type        = string
-  default     = "{{ $sys.deploymentCell.region }}"
 }
 
 variable "network" {
-  description = "The deployment cell's existing VPC, same value netAttach used. Bare name, partial URL or self_link all accepted."
+  description = "The deployment cell's existing VPC, from `$sys.deploymentCell.cloudProviderNetworkID`, the same value netAttach used. Bare name, partial URL or self_link all accepted."
   type        = string
-  default     = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
 }
 
 variable "instance_id" {
-  description = "Omnistrate instance id."
+  description = "Omnistrate instance id, from `$sys.id`."
   type        = string
-  default     = "{{ $sys.id }}"
 }
 
 variable "db_subnet_group_name" {
@@ -114,8 +113,11 @@ variable "pg_user" {
 variable "pg_password" {
   description = <<-EOT
     Optional. Leave empty (the default) and a strong password is generated and
-    published on the `pg_password` output. Supply a value from the plan spec
-    (`{{ $var.visibilityPassword }}`) if you want the customer to choose it.
+    published on the `pg_password` output. Plan 2 supplies it instead, as
+    `{{ $var.visibilityPassword }}`, so the customer chooses one password that
+    the same tfvars key carries on all three clouds. Azure requires this, since
+    its administrator password is fixed at server creation and that module
+    cannot generate its own.
   EOT
   type        = string
   default     = ""

@@ -126,7 +126,7 @@ variable "pg_user" {
 }
 
 variable "pg_password" {
-  description = "Master password. Leave empty (the default) to generate a 32-character alphanumeric password. Never put a real password in the plan spec, it would land in result_params in plaintext."
+  description = "Master password. Leave empty (the default) to generate a 32-character alphanumeric password. Plan 2 supplies it instead from the visibilityPassword apiParameter, which is declared export: false, so the value stays out of result_params. A literal password typed into the plan spec would not be protected that way."
   type        = string
   default     = ""
   sensitive   = true

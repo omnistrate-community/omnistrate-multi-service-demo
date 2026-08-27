@@ -1,32 +1,32 @@
 // -----------------------------------------------------------------------------
 // identityInfra (GCP), inputs
+//
+// Plain portable Terraform. The variables with no default are supplied by the
+// plan spec through `variablesValuesFileOverride`.
 // -----------------------------------------------------------------------------
 
 variable "project_id" {
-  description = "GCP project holding the workload identity pool, the bucket and the Cloud SQL instance."
+  description = "GCP project holding the workload identity pool, the bucket and the Cloud SQL instance. Wired from `$sys.deploymentCell.gcp.projectID`."
   type        = string
-  default     = "{{ $sys.deploymentCell.gcp.projectID }}"
 }
 
 variable "region" {
-  description = "Deployment cell region. Only used to configure the provider; IAM is global."
+  description = "Deployment cell region, from `$sys.deploymentCell.region`. Only used to configure the provider; IAM is global."
   type        = string
-  default     = "{{ $sys.deploymentCell.region }}"
 }
 
 variable "instance_id" {
-  description = "Omnistrate instance id, part of the service account id."
+  description = "Omnistrate instance id, from `$sys.id`. Part of the service account id."
   type        = string
-  default     = "{{ $sys.id }}"
 }
 
 variable "namespace" {
   description = <<-EOT
-    Kubernetes namespace the instance's pods run in. Omnistrate puts one
-    namespace per instance and every resource of that instance lands in it.
+    Kubernetes namespace the instance's pods run in, from
+    `$sys.deployment.resourceKubernetesNamespace`. Omnistrate puts one namespace
+    per instance and every resource of that instance lands in it.
   EOT
   type        = string
-  default     = "{{ $sys.deployment.resourceKubernetesNamespace }}"
 }
 
 variable "ksa_names" {
@@ -34,24 +34,30 @@ variable "ksa_names" {
     Kubernetes service accounts inside `namespace` that may impersonate the
     Google service account.
 
-    Default is the single KSA Omnistrate provisions for this resource
-    (`$sys.deployment.kubernetesServiceAccountName`).
-
-    Open question: whether Omnistrate issues one KSA per instance namespace or one
-    per resource. If it is per-resource, the KSA that vllmInference / trino /
-    aiWorkers actually run as is a different name and the binding below will
-    not cover them. Confirm with
-    `kubectl -n <instance-ns> get serviceaccounts` on a live instance; if there
-    is more than one, list them all here from the plan spec via
-    `variablesValuesFileOverride`, e.g.
+    Supplied from the plan spec via `variablesValuesFileOverride`, e.g.
 
       ksa_names = ["{{ $sys.deployment.kubernetesServiceAccountName }}", "default"]
+
+    The list needs one entry per KSA the instance's pods actually run as, which
+    in plan2 is three names:
+
+      $sys.deployment.kubernetesServiceAccountName
+                  the KSA Omnistrate provisions. vllmInference is pinned to it
+                  through the chart's serviceAccountName value.
+      ai-worker   the local ai-worker chart sets serviceAccount.create: true
+                  with an empty name, so the name falls through to the release
+                  name.
+      default     the temporal and trino charts both ship
+                  serviceAccount.create: false with an empty name, so their pods
+                  use the namespace's default KSA.
+
+    Confirm against a live instance with
+    `kubectl -n <instance-ns> get serviceaccounts`.
 
     Adding a name that does not exist is harmless, an IAM member referencing a
     non-existent KSA principal is accepted and simply never used.
   EOT
   type        = list(string)
-  default     = ["{{ $sys.deployment.kubernetesServiceAccountName }}"]
 
   validation {
     condition     = length(var.ksa_names) > 0

@@ -15,7 +15,8 @@ output "workload_identity_ref" {
 
     So the Helm layer writes one templated annotation value,
     `{{ $identityInfra.out.workload_identity_ref }}`, and only the annotation
-    KEY differs per cloud, a per-cloud chartValues line, not a per-cloud chart.
+    KEY differs per cloud, a scoped layeredChartValues layer holding that one
+    annotation, not a per-cloud chart.
   EOT
   value       = google_service_account.workload.email
 }

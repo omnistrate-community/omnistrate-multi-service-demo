@@ -79,13 +79,15 @@ output "pg_password" {
     Marked sensitive so it is redacted from plan/apply logs. Do NOT list this
     key under `requiredOutputs` with `exported: true`: exported values land in
     `result_params` in plaintext and there is no per-entry export flag to stop
-    them. It is consumed only as `{{ $visibilityDb.out.pg_password }}` inside
-    chartValues on an `internal: true` resource, which never surfaces to the
-    customer.
+    them. It is consumed as `{{ $visibilityDb.out.pg_password }}` in
+    temporalServer's chartValues and in trino's layeredChartValues, and chart
+    values are not surfaced to the customer.
 
     Echoed straight back from the input: unlike AWS and GCP, this stack does not
     generate a password, because Azure's administrator password is set at server
-    creation and the plan already collects it as `{{ $var.visibilityPassword }}`.
+    creation. The plan collects it as the visibilityPassword apiParameter on
+    temporalServer and threads it down to this stack's tfvars as
+    `{{ $var.visibilityPassword }}`.
   EOT
   value       = var.pg_password
   sensitive   = true

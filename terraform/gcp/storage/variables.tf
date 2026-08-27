@@ -1,28 +1,28 @@
 // -----------------------------------------------------------------------------
 // storageInfra (GCP), inputs
+//
+// Plain portable Terraform. The variables with no default are supplied by the
+// plan spec through `variablesValuesFileOverride`.
 // -----------------------------------------------------------------------------
 
 variable "project_id" {
-  description = "GCP project that owns the bucket and the KMS key ring."
+  description = "GCP project that owns the bucket and the KMS key ring. Wired from `$sys.deploymentCell.gcp.projectID`."
   type        = string
-  default     = "{{ $sys.deploymentCell.gcp.projectID }}"
 }
 
 variable "region" {
   description = <<-EOT
-    Deployment cell region. Used for BOTH the bucket location and the KMS key
-    ring location, CMEK requires the key and the bucket to live in the same
-    location, and a regional bucket with a multi-region key is rejected at
-    create time.
+    Deployment cell region, from `$sys.deploymentCell.region`. Used for BOTH the
+    bucket location and the KMS key ring location, CMEK requires the key and the
+    bucket to live in the same location, and a regional bucket with a
+    multi-region key is rejected at create time.
   EOT
   type        = string
-  default     = "{{ $sys.deploymentCell.region }}"
 }
 
 variable "instance_id" {
-  description = "Omnistrate instance id, part of the globally-unique bucket name."
+  description = "Omnistrate instance id, from `$sys.id`. Part of the globally-unique bucket name."
   type        = string
-  default     = "{{ $sys.id }}"
 }
 
 variable "storage_class" {

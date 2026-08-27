@@ -20,9 +20,13 @@
 #      vpc_id      = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
 #      private_subnet_ids = [
 #        "{{ $sys.deploymentCell.privateSubnetIDs[0].id }}",
-#        "{{ $sys.deploymentCell.privateSubnetIDs[1].id }}",
-#        "{{ $sys.deploymentCell.privateSubnetIDs[2].id }}"
+#        "{{ $sys.deploymentCell.privateSubnetIDs[1].id }}"
 #      ]
+#
+#  Two entries, not three. An index past the end of privateSubnetIDs renders
+#  empty, and a region with only two usable Availability Zones would then hand
+#  the DB subnet group an empty subnet id. Two is what the RDS subnet group
+#  requires and what every cell has.
 #
 #  ...and declare the outputs this stack publishes:
 #

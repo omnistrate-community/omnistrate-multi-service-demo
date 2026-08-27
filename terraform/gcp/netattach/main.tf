@@ -28,6 +28,11 @@
 //        configurationPerCloudProvider:
 //          gcp:
 //            terraformPath: /terraform/gcp/netattach
+//            variablesValuesFileOverride: |
+//              project_id  = "{{ $sys.deploymentCell.gcp.projectID }}"
+//              region      = "{{ $sys.deploymentCell.region }}"
+//              network     = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+//              instance_id = "{{ $sys.id }}"
 //            gitConfiguration:
 //              reference: refs/tags/vX.Y.Z      # never refs/heads/main
 //              repositoryUrl: https://github.com/<org>/omnistrate-platform-demo.git

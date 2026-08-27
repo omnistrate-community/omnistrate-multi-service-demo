@@ -68,7 +68,6 @@ variable "ksa_names" {
     Confirm with `kubectl -n <instance-ns> get serviceaccounts`.
   EOT
   type        = list(string)
-  default     = ["{{ $sys.deployment.kubernetesServiceAccountName }}"]
 
   validation {
     condition     = length(var.ksa_names) > 0 && length(var.ksa_names) <= 20

@@ -130,7 +130,7 @@ resource "azurerm_storage_account" "main" {
   account_tier             = "Standard"
   account_replication_type = var.account_replication_type
 
-  # ADLS Gen2. Required for Trino's `fs.native-azure.enabled` to address the
+  # ADLS Gen2. Required for Trino's `fs.azure.enabled` to address the
   # Iceberg warehouse over abfss://.
   is_hns_enabled = var.hierarchical_namespace_enabled
 

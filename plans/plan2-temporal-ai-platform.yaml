@@ -31,6 +31,21 @@
 # ---------------------------------------------------------------------------
 # Every metered workload sets omnistrate.com/include-customer-billing on its pod
 # template. The values path differs per chart, noted at each site below.
+#
+# ---------------------------------------------------------------------------
+# Two conventions carry the per-cloud differences, so nothing cloud-specific
+# leaks into the artifacts themselves:
+#
+#   Terraform  the .tf files under terraform/ are plain portable Terraform with
+#              no $sys, $var or .out. expressions in them. Each cloud's values
+#              arrive through variablesValuesFileOverride, an inline tfvars
+#              string on that cloud's terraformConfigurations entry.
+#
+#   Helm       resources whose values differ per cloud use layeredChartValues
+#              instead of chartValues, the two being mutually exclusive. A base
+#              layer holds the cloud-independent release and each cloud layer is
+#              gated by a scope on $sys.deploymentCell.cloudProviderName.
+#              Resources with no per-cloud difference keep chartValues.
 # =============================================================================
 
 name: Temporal AI Platform
@@ -95,6 +110,20 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # The .tf files carry no Omnistrate template expressions. Every $sys,
+          # $var and .out. value enters through this inline tfvars string, which
+          # keeps the modules runnable with plain `tofu apply` outside the
+          # platform.
+          #   docs: getting-started/build-from-terraform
+          #         #terraform-variables-override-with-inline-file
+          variablesValuesFileOverride: |
+            instance_id = "{{ $sys.id }}"
+            region      = "{{ $sys.deploymentCell.region }}"
+            vpc_id      = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+            private_subnet_ids = [
+              "{{ $sys.deploymentCell.privateSubnetIDs[0].id }}",
+              "{{ $sys.deploymentCell.privateSubnetIDs[1].id }}"
+            ]
           requiredOutputs:
             - key: db_security_group_id
               exported: false
@@ -105,6 +134,14 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # No subnet ids here. The GCP module reserves a PSA range with
+          # google_compute_global_address and never takes a subnet, so the
+          # privateSubnetIDs / subNetworks question does not arise.
+          variablesValuesFileOverride: |
+            project_id  = "{{ $sys.deploymentCell.gcp.projectID }}"
+            region      = "{{ $sys.deploymentCell.region }}"
+            network     = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+            instance_id = "{{ $sys.id }}"
           requiredOutputs:
             - key: db_security_group_id
               exported: false
@@ -115,12 +152,27 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # resource_group_name and vnet_resource_group_name are left unset, so
+          # the module parses the group out of the ARM vnet_id. The delegated
+          # subnet has to be a child of the cell VNet, so that is the right group.
+          variablesValuesFileOverride: |
+            instance_id     = "{{ $sys.id }}"
+            region          = "{{ $sys.deploymentCell.region }}"
+            subscription_id = "{{ $sys.deploymentCell.azure.subscriptionID }}"
+            tenant_id       = "{{ $sys.deploymentCell.azure.tenantID }}"
+            vnet_id         = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
           requiredOutputs:
             - key: db_security_group_id
               exported: false
             - key: db_subnet_group_name
               exported: false
             - key: resource_group_name
+              exported: false
+            # Both consumed by the visibilityDb azure tfvars block below, which
+            # is why they have to be captured here.
+            - key: db_subnet_id
+              exported: false
+            - key: private_dns_zone_id
               exported: false
 
   # ===========================================================================
@@ -140,6 +192,11 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # bucket_name_override is left unset so the module derives a globally
+          # unique name from the instance id.
+          variablesValuesFileOverride: |
+            instance_id = "{{ $sys.id }}"
+            region      = "{{ $sys.deploymentCell.region }}"
           requiredOutputs:
             - key: bucket_uri
               exported: true
@@ -154,6 +211,10 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          variablesValuesFileOverride: |
+            project_id  = "{{ $sys.deploymentCell.gcp.projectID }}"
+            region      = "{{ $sys.deploymentCell.region }}"
+            instance_id = "{{ $sys.id }}"
           requiredOutputs:
             - key: bucket_uri
               exported: true
@@ -168,6 +229,18 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # resource_group_name comes from netAttach so all four Azure stacks
+          # land in one group. vnet_id stays as the fallback the module parses
+          # the group out of when resource_group_name is empty. tenant_id feeds
+          # azurerm_key_vault.main.tenant_id, so it is passed explicitly rather
+          # than left to the provider's ARM_TENANT_ID fallback.
+          variablesValuesFileOverride: |
+            instance_id         = "{{ $sys.id }}"
+            region              = "{{ $sys.deploymentCell.region }}"
+            subscription_id     = "{{ $sys.deploymentCell.azure.subscriptionID }}"
+            tenant_id           = "{{ $sys.deploymentCell.azure.tenantID }}"
+            vnet_id             = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+            resource_group_name = "{{ $netAttach.out.resource_group_name }}"
           requiredOutputs:
             - key: bucket_uri
               exported: true
@@ -181,6 +254,12 @@ services:
               exported: false
             - key: key_vault_id
               exported: false
+            # AZURE-ONLY. bucket_uri is az://, the scheme vLLM's RunAI streamer
+            # accepts; Trino and the worker's Iceberg FileIO need the abfss://
+            # form of the same container. Consumed by the azure layers on
+            # aiWorkers and trino.
+            - key: bucket_uri_abfss
+              exported: false
 
   # ===========================================================================
   # LEVEL 2, visibilityDb
@@ -193,6 +272,23 @@ services:
     description: Managed PostgreSQL 17 for Temporal's visibility store and the Iceberg JDBC catalog.
     dependsOn:
       - netAttach
+    apiParameters:
+      # Required because Azure fixes the administrator password when the
+      # Flexible Server is created, so terraform/azure/visibilitydb takes
+      # pg_password as a required input with no default and cannot generate one.
+      # The AWS and GCP modules accept the same value and fall back to a
+      # generated password only when it is empty, so the parameter is wired on
+      # all three rather than being inert on two.
+      - key: visibilityPassword
+        name: Visibility Store Password
+        description: >-
+          Password for the PostgreSQL login Temporal and Trino connect as. 8 to
+          128 characters. Avoid / @ " and spaces, which AWS RDS rejects in a
+          master password.
+        type: Password
+        required: true
+        modifiable: false
+        export: false
     terraformConfigurations:
       configurationPerCloudProvider:
         aws:
@@ -200,6 +296,16 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # manage_pg_objects is left at its default of true, so the Terraform
+          # runner creates the Iceberg database over port 5432 inside the cell
+          # VPC. If the runner cannot reach the VPC, set manage_pg_objects to
+          # false here and create that database another way.
+          variablesValuesFileOverride: |
+            instance_id          = "{{ $sys.id }}"
+            region               = "{{ $sys.deploymentCell.region }}"
+            db_subnet_group_name = "{{ $netAttach.out.db_subnet_group_name }}"
+            db_security_group_id = "{{ $netAttach.out.db_security_group_id }}"
+            pg_password          = "{{ $var.visibilityPassword }}"
           requiredOutputs:
             - key: pg_endpoint
               exported: true
@@ -222,6 +328,20 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # db_subnet_group_name is the PSA allocated-range name netAttach
+          # reserved, consumed as settings.ip_configuration.allocated_ip_range.
+          # Left empty, Cloud SQL picks any free block in the shared cell
+          # peering instead of the one reserved for this instance.
+          # db_security_group_id is accepted and unused on GCP; passed so the
+          # three blocks keep the same shape.
+          variablesValuesFileOverride: |
+            project_id           = "{{ $sys.deploymentCell.gcp.projectID }}"
+            region               = "{{ $sys.deploymentCell.region }}"
+            network              = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+            instance_id          = "{{ $sys.id }}"
+            db_subnet_group_name = "{{ $netAttach.out.db_subnet_group_name }}"
+            db_security_group_id = "{{ $netAttach.out.db_security_group_id }}"
+            pg_password          = "{{ $var.visibilityPassword }}"
           requiredOutputs:
             - key: pg_endpoint
               exported: true
@@ -242,6 +362,19 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # db_subnet_id and private_dns_zone_id are required with no default,
+          # and the Flexible Server cannot be created without both. Both were
+          # added to netAttach's azure requiredOutputs above.
+          variablesValuesFileOverride: |
+            instance_id         = "{{ $sys.id }}"
+            region              = "{{ $sys.deploymentCell.region }}"
+            subscription_id     = "{{ $sys.deploymentCell.azure.subscriptionID }}"
+            tenant_id           = "{{ $sys.deploymentCell.azure.tenantID }}"
+            vnet_id             = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
+            resource_group_name = "{{ $netAttach.out.resource_group_name }}"
+            db_subnet_id        = "{{ $netAttach.out.db_subnet_id }}"
+            private_dns_zone_id = "{{ $netAttach.out.private_dns_zone_id }}"
+            pg_password         = "{{ $var.visibilityPassword }}"
           requiredOutputs:
             - key: pg_endpoint
               exported: true
@@ -265,15 +398,44 @@ services:
   - name: identityInfra
     internal: true
     description: Workload identity (IRSA / GKE Workload Identity / Azure federated credential) for bucket access.
+    # netAttach is listed as well as storageInfra because the azure block reads
+    # {{ $netAttach.out.resource_group_name }}, so the value reference and the
+    # ordering edge are stated in the same place. All Terraform outputs are
+    # readable by dependent resources, which is how the Helm resources further
+    # down reach visibilityDb and storageInfra outputs across an edge that is
+    # only transitive, so the direct edge here is about legibility rather than
+    # a resolution requirement.
+    #   docs: build-guides/terraform-params-outputs #output-mapping
     dependsOn:
+      - netAttach
       - storageInfra
     terraformConfigurations:
       configurationPerCloudProvider:
+        # ksa_names lists the Kubernetes service accounts the trust policy
+        # covers. $sys.deployment.kubernetesServiceAccountName resolves in the
+        # context of THIS resource, which runs no pods, so the accounts the Helm
+        # workloads actually run as are listed alongside it: `ai-worker` from the
+        # local chart's own ServiceAccount, and `default` because the temporal
+        # and trino charts both ship serviceAccount.create: false. Naming an
+        # account that does not exist is harmless. Confirm against
+        # `kubectl -n <instance-ns> get serviceaccounts` on the first deployment.
         aws:
           terraformPath: /terraform/aws/identity
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # bucket_name and kms_key_id are optional but both default to empty,
+          # which makes the module emit a policy with no S3 and no KMS access at
+          # all, so they are supplied.
+          variablesValuesFileOverride: |
+            instance_id = "{{ $sys.id }}"
+            region      = "{{ $sys.deploymentCell.region }}"
+            account_id  = "{{ $sys.deploymentCell.aws.accountNumber }}"
+            oidc_issuer = "{{ $sys.deploymentCell.oidcIssuerID }}"
+            namespace   = "{{ $sys.deployment.resourceKubernetesNamespace }}"
+            ksa_names   = ["{{ $sys.deployment.kubernetesServiceAccountName }}", "ai-worker", "default"]
+            bucket_name = "{{ $storageInfra.out.bucket_name }}"
+            kms_key_id  = "{{ $storageInfra.out.kms_key_id }}"
           requiredOutputs:
             - key: workload_identity_ref
               exported: false
@@ -282,6 +444,15 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # bucket_name empty skips every bucket IAM binding, leaving vLLM unable
+          # to stream weights and Trino unable to write the warehouse.
+          variablesValuesFileOverride: |
+            project_id  = "{{ $sys.deploymentCell.gcp.projectID }}"
+            region      = "{{ $sys.deploymentCell.region }}"
+            instance_id = "{{ $sys.id }}"
+            namespace   = "{{ $sys.deployment.resourceKubernetesNamespace }}"
+            ksa_names   = ["{{ $sys.deployment.kubernetesServiceAccountName }}", "ai-worker", "default"]
+            bucket_name = "{{ $storageInfra.out.bucket_name }}"
           requiredOutputs:
             - key: workload_identity_ref
               exported: false
@@ -290,6 +461,24 @@ services:
           gitConfiguration:
             reference: "REPLACE_ME_GIT_TAG"
             repositoryUrl: "REPLACE_ME_GIT_REPO_URL"
+          # This module has no vnet_id parsing fallback, so resource_group_name
+          # has to come from netAttach. storage_account_id and key_vault_id
+          # default to empty, which silently skips both role assignments and
+          # leaves the identity unable to read blobs.
+          #
+          # Azure caps a managed identity at 20 federated credentials, one per
+          # subject, so ksa_names cannot grow far.
+          variablesValuesFileOverride: |
+            instance_id         = "{{ $sys.id }}"
+            region              = "{{ $sys.deploymentCell.region }}"
+            subscription_id     = "{{ $sys.deploymentCell.azure.subscriptionID }}"
+            tenant_id           = "{{ $sys.deploymentCell.azure.tenantID }}"
+            resource_group_name = "{{ $netAttach.out.resource_group_name }}"
+            oidc_issuer         = "{{ $sys.deploymentCell.oidcIssuerID }}"
+            namespace           = "{{ $sys.deployment.resourceKubernetesNamespace }}"
+            ksa_names           = ["{{ $sys.deployment.kubernetesServiceAccountName }}", "ai-worker", "default"]
+            storage_account_id  = "{{ $storageInfra.out.storage_account_id }}"
+            key_vault_id        = "{{ $storageInfra.out.key_vault_id }}"
           requiredOutputs:
             - key: workload_identity_ref
               exported: false
@@ -351,6 +540,22 @@ services:
         modifiable: false
         export: true
         defaultValue: "3"
+      # Not used by this chart. Declared only to carry the value one hop further
+      # down to visibilityDb, which consumes it as pg_password. A parameter on a
+      # non-root resource is not collected from the customer on its own, and
+      # parameterDependencyMap covers a single hop, so the value is threaded
+      # along each dependsOn edge from temporalServer to visibilityDb.
+      #   docs: build-guides/terraform-params-outputs
+      #         #direct-vs-transitive-parameter-mapping
+      - key: visibilityPassword
+        name: Visibility Store Password
+        description: Password for the PostgreSQL login, passed through to the visibility store.
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+        parameterDependencyMap:
+          visibilityDb: visibilityPassword
     helmChartConfiguration:
       chartName: temporal
       chartVersion: "1.6.0"
@@ -440,6 +645,22 @@ services:
         defaultValue: "dc1"
         parameterDependencyMap:
           temporalSchema: cassandraDatacenter
+      # This resource is the customer-facing root, so this is where the value is
+      # actually collected. From here it travels temporalServer ->
+      # temporalSchema -> visibilityDb, one hop per parameterDependencyMap, and
+      # is consumed as pg_password in visibilityDb's tfvars on all three clouds.
+      - key: visibilityPassword
+        name: Visibility Store Password
+        description: >-
+          Password for the PostgreSQL login Temporal and Trino connect as. 8 to
+          128 characters. Avoid / @ " and spaces, which AWS RDS rejects in a
+          master password.
+        type: Password
+        required: true
+        modifiable: false
+        export: false
+        parameterDependencyMap:
+          temporalSchema: visibilityPassword
       - key: temporalNamespace
         name: Temporal Namespace
         description: Namespace created at startup for your workflows.
@@ -672,6 +893,14 @@ services:
                 # NOTE: podLabels, not labels, `labels` is deployment-level and
                 # would not reach the pod template, silently zeroing GPU billing.
                 omnistrate.com/include-customer-billing: "true"
+                # Stays here rather than moving to an azure layer, and is inert
+                # off Azure. This key sits inside modelSpec, which is a LIST: a
+                # layer setting servingEngineSpec.modelSpec would replace the
+                # list and so would have to restate every key below to change
+                # one label. The chart's other label path,
+                # servingEngineSpec.labels, is injected into
+                # spec.selector.matchLabels, which cannot hold a label that is
+                # present on one cloud and absent on another.
                 azure.workload.identity/use: "true"
               # Omnistrate's affinity injection handles node placement but never
               # adds the device-plugin toleration.
@@ -695,7 +924,12 @@ services:
   - name: aiWorkers
     internal: true
     description: Temporal workers that run AI activities against vLLM and write results to Cassandra and the bucket.
+    # temporalServer is listed as well as vllmInference because the four
+    # parameterDependencyMap entries below name temporalServer, and a mapping
+    # reaches an immediate dependency only. Ordering is unchanged either way,
+    # since vllmInference already depends on temporalServer.
     dependsOn:
+      - temporalServer
       - vllmInference
     apiParameters:
       - key: workerReplicas
@@ -767,38 +1001,94 @@ services:
       runtimeConfiguration:
         wait: true
         timeoutNanos: 900000000000
-      chartValues:
-        replicaCount: $var.workerReplicas
-        image:
-          repository: "REPLACE_ME_REGISTRY/ai-worker"
-          tag: $var.workerImageTag
-          pullPolicy: IfNotPresent
-        serviceAccount:
-          annotations:
-            # Only the annotation KEY differs per cloud; the value is the same
-            # templated output everywhere. Emit only the active cloud's key in a
-            # real deployment, see README.
-            eks.amazonaws.com/role-arn: "{{ $identityInfra.out.workload_identity_ref }}"
-        podLabels:
-          omnistrate.com/include-customer-billing: "true"
-          azure.workload.identity/use: "true"
-        temporal:
-          # Deterministic because temporalServer pins fullnameOverride: temporal.
-          address: "temporal-frontend.$sys.deployment.resourceKubernetesNamespace.svc.cluster.local:7233"
-          namespace: $var.temporalNamespace
-          taskQueue: "ai-triage"
-        vllm:
-          baseUrl: "http://vllm-engine-service:80/v1"
-          model: "qwen"
-        cassandra:
-          hosts: $var.cassandraHost
-          port: 9042
-          keyspace: "ai_platform"
-          user: $var.cassandraUser
-          password: $var.cassandraPassword
-          datacenter: "dc1"
-        storage:
-          bucketUri: "{{ $storageInfra.out.bucket_uri }}"
+      # layeredChartValues replaces chartValues; the two are mutually exclusive
+      # on one resource. Layers are deep merged in order and a layer whose scope
+      # does not match is skipped, so the base layer is a working release on its
+      # own and each cloud layer adds only the keys that differ.
+      #
+      # Every per-cloud override below lands on a map or a scalar. No cloud layer
+      # touches a list, because list merge behaviour is not stated in the docs.
+      #   docs: build-guides/helm-chart-layered-values
+      layeredChartValues:
+        - name: base
+          values:
+            replicaCount: $var.workerReplicas
+            image:
+              repository: "REPLACE_ME_REGISTRY/ai-worker"
+              tag: $var.workerImageTag
+              pullPolicy: IfNotPresent
+            podLabels:
+              omnistrate.com/include-customer-billing: "true"
+            temporal:
+              # Deterministic because temporalServer pins fullnameOverride: temporal.
+              address: "temporal-frontend.$sys.deployment.resourceKubernetesNamespace.svc.cluster.local:7233"
+              namespace: $var.temporalNamespace
+              taskQueue: "ai-triage"
+            vllm:
+              baseUrl: "http://vllm-engine-service:80/v1"
+              model: "qwen"
+            cassandra:
+              hosts: $var.cassandraHost
+              port: 9042
+              keyspace: "ai_platform"
+              user: $var.cassandraUser
+              password: $var.cassandraPassword
+              datacenter: "dc1"
+            storage:
+              # s3:// on AWS, gs:// on GCP. The azure layer overrides this,
+              # because the chart feeds it to ICEBERG_WAREHOUSE_URI and
+              # worker.py's scheme handling covers s3/s3a/s3n and
+              # abfs/abfss/wasb/wasbs but not az://.
+              bucketUri: "{{ $storageInfra.out.bucket_uri }}"
+              # The AWS SDK has no other source for the region inside the pod.
+              region: "{{ $storageInfra.out.bucket_region }}"
+            iceberg:
+              # The same JDBC catalog the trino resource reads, so an append
+              # from a worker is visible to a query. catalogName must match
+              # iceberg.jdbc-catalog.catalog-name in the trino layers, and
+              # namespace and table must match what the workers bootstrap.
+              catalogName: ai_platform
+              namespace: triage
+              table: triage_analytics
+              pgHostPort: "{{ $visibilityDb.out.pg_endpoint }}"
+              pgDatabase: "{{ $visibilityDb.out.pg_iceberg_db }}"
+              pgUser: "{{ $visibilityDb.out.pg_user }}"
+              pgPassword: "{{ $visibilityDb.out.pg_password }}"
+
+        # The annotation VALUE is the same output on all three clouds; only the
+        # KEY changes, which is why these are three one-key layers rather than
+        # three copies of the release.
+        - name: aws
+          scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "aws"
+          values:
+            serviceAccount:
+              annotations:
+                eks.amazonaws.com/role-arn: "{{ $identityInfra.out.workload_identity_ref }}"
+
+        - name: gcp
+          scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "gcp"
+          values:
+            serviceAccount:
+              annotations:
+                iam.gke.io/gcp-service-account: "{{ $identityInfra.out.workload_identity_ref }}"
+
+        - name: azure
+          scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "azure"
+          values:
+            serviceAccount:
+              annotations:
+                azure.workload.identity/client-id: "{{ $identityInfra.out.workload_identity_ref }}"
+            # Merges with the billing label from base. Without this label the
+            # azure-workload-identity webhook injects no token volume and the
+            # client-id annotation has no effect.
+            podLabels:
+              azure.workload.identity/use: "true"
+            storage:
+              # abfss://<container>@<account>.dfs.core.windows.net
+              bucketUri: "{{ $storageInfra.out.bucket_uri_abfss }}"
 
   # ===========================================================================
   # LEVEL 7, trino
@@ -853,46 +1143,141 @@ services:
       runtimeConfiguration:
         wait: true
         timeoutNanos: 900000000000
-      chartValues:
-        # The chart pins appVersion 480 and lags the engine by three releases.
-        # Overriding the tag is the supported way to run current Trino.
-        image:
-          tag: "483"
-        server:
-          workers: $var.trinoWorkers
-        coordinator:
-          labels:
-            # Lands on spec.template.metadata.labels and stays out of
-            # spec.selector.matchLabels.
-            omnistrate.com/include-customer-billing: "true"
-            azure.workload.identity/use: "true"
-        worker:
-          labels:
-            omnistrate.com/include-customer-billing: "true"
-            azure.workload.identity/use: "true"
-        catalogs:
-          # --- the durable event history, read live out of Cassandra ---
-          cassandra: |
-            connector.name=cassandra
-            cassandra.contact-points=$var.cassandraHost
-            cassandra.native-protocol-port=9042
-            cassandra.consistency-level=LOCAL_QUORUM
-            cassandra.security=PASSWORD
-            cassandra.username=$var.cassandraUser
-            cassandra.password=$var.cassandraPassword
-            cassandra.load-policy.use-dc-aware=true
-            cassandra.load-policy.dc-aware.local-dc=dc1
-          # --- the aggregated results, as Iceberg tables in the bucket ---
-          # A JDBC catalog on the Postgres server we already provisioned. The
-          # alternative, a full Iceberg REST catalog, would add another tier
-          # and another database for no demo benefit.
-          iceberg: |
-            connector.name=iceberg
-            iceberg.catalog.type=jdbc
-            iceberg.jdbc-catalog.driver-class=org.postgresql.Driver
-            iceberg.jdbc-catalog.connection-url=jdbc:postgresql://{{ $visibilityDb.out.pg_endpoint }}/{{ $visibilityDb.out.pg_iceberg_db }}
-            iceberg.jdbc-catalog.connection-user={{ $visibilityDb.out.pg_user }}
-            iceberg.jdbc-catalog.connection-password={{ $visibilityDb.out.pg_password }}
-            iceberg.jdbc-catalog.catalog-name=ai_platform
-            iceberg.jdbc-catalog.default-warehouse-dir={{ $storageInfra.out.bucket_uri }}/warehouse
-            fs.native-s3.enabled=true
+      # The iceberg catalog is a properties FILE, held in the chart as one
+      # string. Deep merge replaces a string wholesale, so the filesystem lines
+      # cannot be appended by a layer and each cloud layer carries the whole
+      # catalog. `catalogs` itself is a map, so the cassandra catalog in base
+      # survives alongside whichever iceberg catalog is selected.
+      #
+      # Trino 483 documents the filesystem switches as fs.s3.enabled,
+      # fs.gcs.enabled and fs.azure.enabled. The fs.native-* spellings this
+      # resource used before are not in the 483 property tables.
+      #   docs: trino.io/docs/483/object-storage.html
+      layeredChartValues:
+        - name: base
+          values:
+            # The chart pins appVersion 480 and lags the engine by three
+            # releases. Overriding the tag is the supported way to run current
+            # Trino.
+            image:
+              tag: "483"
+            server:
+              workers: $var.trinoWorkers
+            serviceAccount:
+              # The chart defaults to create: false, which leaves the pods on the
+              # namespace default account with no annotation, so the Iceberg
+              # reads have no cloud identity. Each cloud layer adds the one
+              # annotation key it needs.
+              create: true
+              name: trino
+            coordinator:
+              labels:
+                # Lands on spec.template.metadata.labels and stays out of
+                # spec.selector.matchLabels.
+                omnistrate.com/include-customer-billing: "true"
+            worker:
+              labels:
+                omnistrate.com/include-customer-billing: "true"
+            catalogs:
+              # --- the durable event history, read live out of Cassandra ---
+              # No object storage involved, so this catalog is identical on all
+              # three clouds.
+              cassandra: |
+                connector.name=cassandra
+                cassandra.contact-points=$var.cassandraHost
+                cassandra.native-protocol-port=9042
+                cassandra.consistency-level=LOCAL_QUORUM
+                cassandra.security=PASSWORD
+                cassandra.username=$var.cassandraUser
+                cassandra.password=$var.cassandraPassword
+                cassandra.load-policy.use-dc-aware=true
+                cassandra.load-policy.dc-aware.local-dc=dc1
+
+        # --- the aggregated results, as Iceberg tables in the bucket ---
+        # A JDBC catalog on the Postgres server already provisioned. The
+        # alternative, a full Iceberg REST catalog, would add another tier and
+        # another database for no demo benefit.
+        - name: aws
+          scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "aws"
+          values:
+            serviceAccount:
+              annotations:
+                eks.amazonaws.com/role-arn: "{{ $identityInfra.out.workload_identity_ref }}"
+            catalogs:
+              iceberg: |
+                connector.name=iceberg
+                iceberg.catalog.type=jdbc
+                iceberg.jdbc-catalog.driver-class=org.postgresql.Driver
+                iceberg.jdbc-catalog.connection-url=jdbc:postgresql://{{ $visibilityDb.out.pg_endpoint }}/{{ $visibilityDb.out.pg_iceberg_db }}
+                iceberg.jdbc-catalog.connection-user={{ $visibilityDb.out.pg_user }}
+                iceberg.jdbc-catalog.connection-password={{ $visibilityDb.out.pg_password }}
+                iceberg.jdbc-catalog.catalog-name=ai_platform
+                iceberg.jdbc-catalog.default-warehouse-dir={{ $storageInfra.out.bucket_uri }}/warehouse
+                fs.s3.enabled=true
+                # s3.auth-type defaults to DEFAULT, which uses static access
+                # keys when set and otherwise the AWS default credentials chain,
+                # so it picks up the IRSA web-identity token. Region has no
+                # default and the SDK has no other source for it in the pod
+                # unless AWS_REGION happens to be set.
+                s3.region={{ $storageInfra.out.bucket_region }}
+
+        - name: gcp
+          scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "gcp"
+          values:
+            serviceAccount:
+              annotations:
+                iam.gke.io/gcp-service-account: "{{ $identityInfra.out.workload_identity_ref }}"
+            catalogs:
+              iceberg: |
+                connector.name=iceberg
+                iceberg.catalog.type=jdbc
+                iceberg.jdbc-catalog.driver-class=org.postgresql.Driver
+                iceberg.jdbc-catalog.connection-url=jdbc:postgresql://{{ $visibilityDb.out.pg_endpoint }}/{{ $visibilityDb.out.pg_iceberg_db }}
+                iceberg.jdbc-catalog.connection-user={{ $visibilityDb.out.pg_user }}
+                iceberg.jdbc-catalog.connection-password={{ $visibilityDb.out.pg_password }}
+                iceberg.jdbc-catalog.catalog-name=ai_platform
+                iceberg.jdbc-catalog.default-warehouse-dir={{ $storageInfra.out.bucket_uri }}/warehouse
+                fs.gcs.enabled=true
+                # gcs.auth-type defaults to SERVICE_ACCOUNT, which expects a
+                # JSON key. This stack has no static key, so the catalog asks
+                # for Application Default Credentials, which is what GKE
+                # Workload Identity provides.
+                gcs.auth-type=APPLICATION_DEFAULT
+                gcs.project-id={{ $sys.deploymentCell.gcp.projectID }}
+
+        - name: azure
+          scope:
+            "{{ $sys.deploymentCell.cloudProviderName }}": "azure"
+          values:
+            serviceAccount:
+              annotations:
+                azure.workload.identity/client-id: "{{ $identityInfra.out.workload_identity_ref }}"
+            # Merges with the billing label from base on both pod templates.
+            coordinator:
+              labels:
+                azure.workload.identity/use: "true"
+            worker:
+              labels:
+                azure.workload.identity/use: "true"
+            catalogs:
+              iceberg: |
+                connector.name=iceberg
+                iceberg.catalog.type=jdbc
+                iceberg.jdbc-catalog.driver-class=org.postgresql.Driver
+                iceberg.jdbc-catalog.connection-url=jdbc:postgresql://{{ $visibilityDb.out.pg_endpoint }}/{{ $visibilityDb.out.pg_iceberg_db }}
+                iceberg.jdbc-catalog.connection-user={{ $visibilityDb.out.pg_user }}
+                iceberg.jdbc-catalog.connection-password={{ $visibilityDb.out.pg_password }}
+                iceberg.jdbc-catalog.catalog-name=ai_platform
+                # abfss, not the az:// form in bucket_uri. Trino's native Azure
+                # filesystem targets ADLS Gen2 and the storage module enables
+                # the hierarchical namespace it requires.
+                iceberg.jdbc-catalog.default-warehouse-dir={{ $storageInfra.out.bucket_uri_abfss }}/warehouse
+                fs.azure.enabled=true
+                # azure.auth-type defaults to DEFAULT, which loads from
+                # environment variables, so it reads the AZURE_CLIENT_ID and
+                # AZURE_FEDERATED_TOKEN_FILE pair the workload-identity webhook
+                # injects. Stated so the auth path reads the same as the other
+                # two clouds.
+                azure.auth-type=DEFAULT

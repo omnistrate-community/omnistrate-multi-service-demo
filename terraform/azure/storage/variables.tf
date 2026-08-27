@@ -77,7 +77,7 @@ variable "account_replication_type" {
 variable "hierarchical_namespace_enabled" {
   description = <<-EOT
     Enable ADLS Gen2 hierarchical namespace. Required for Trino's native Azure
-    filesystem (`fs.native-azure.enabled`) to address the Iceberg warehouse over
+    filesystem (`fs.azure.enabled`) to address the Iceberg warehouse over
     abfss://. Blob VERSIONING is not supported on HNS accounts, so versioning is
     switched off automatically when this is true.
     Worth confirming: Medusa's azure_blobs backend against an HNS account. Medusa uses

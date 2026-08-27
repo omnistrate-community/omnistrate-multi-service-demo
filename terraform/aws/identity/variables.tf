@@ -1,9 +1,10 @@
 # ---------------------------------------------------------------------------
 # Durable AI Platform / Plan 2 / identityInfra / AWS / inputs
 #
-# Every default is an Omnistrate template expression, resolved by the platform
-# before OpenTofu runs. Anything without a default must be wired explicitly from
-# the plan spec.
+# Plain Terraform: no variable carries an Omnistrate template expression. Every
+# value that comes from the platform is supplied by
+# variablesValuesFileOverride in the plan spec. Defaults here are ordinary
+# Terraform defaults and stay valid outside Omnistrate.
 # ---------------------------------------------------------------------------
 
 variable "instance_id" {
@@ -55,7 +56,7 @@ variable "ksa_names" {
   description = <<-EOT
     Kubernetes service accounts inside `namespace` allowed to assume this role.
 
-    Default is the single KSA Omnistrate provisions for the resource
+    Wire to the KSA Omnistrate provisions for the resource
     ($sys.deployment.kubernetesServiceAccountName).
 
     Open question, shared with the GCP module: whether Omnistrate issues
@@ -69,7 +70,6 @@ variable "ksa_names" {
     Listing a name that does not exist is harmless.
   EOT
   type        = list(string)
-  default     = ["{{ $sys.deployment.kubernetesServiceAccountName }}"]
 
   validation {
     condition     = length(var.ksa_names) > 0

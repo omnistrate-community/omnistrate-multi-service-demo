@@ -56,7 +56,7 @@ output "medusa_container" {
 # --- Azure-only wiring keys ----------------------------------------------------
 
 output "bucket_uri_abfss" {
-  description = "AZURE-ONLY. abfss:// form of the primary container, which is what Trino's `fs.native-azure.enabled` filesystem and the Iceberg warehouse location require. On AWS/GCP the single bucket_uri serves both consumers; on Azure the vLLM scheme (az://) and the Hadoop/Trino scheme (abfss://) genuinely differ, so both are published rather than pretending one form works everywhere."
+  description = "AZURE-ONLY. abfss:// form of the primary container, which is what Trino's `fs.azure.enabled` filesystem and the Iceberg warehouse location require. On AWS/GCP the single bucket_uri serves both consumers; on Azure the vLLM scheme (az://) and the Hadoop/Trino scheme (abfss://) genuinely differ, so both are published rather than pretending one form works everywhere."
   value       = "abfss://${azurerm_storage_container.warehouse.name}@${azurerm_storage_account.main.name}.dfs.core.windows.net"
 }
 

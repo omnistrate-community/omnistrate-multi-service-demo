@@ -53,7 +53,10 @@
 #      region               = "{{ $sys.deploymentCell.region }}"
 #      db_subnet_group_name = "{{ $netAttach.out.db_subnet_group_name }}"
 #      db_security_group_id = "{{ $netAttach.out.db_security_group_id }}"
-#      instance_class       = "{{ $var.visibilityDbInstanceClass }}"
+#
+#  instance_class is left at its default. Wiring it to a customer input needs an
+#  apiParameters entry on the visibilityDb service, which the plan does not
+#  declare.
 #
 #  ...requires dependsOn: [netAttach] on the visibilityDb service, and:
 #

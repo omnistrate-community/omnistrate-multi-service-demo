@@ -18,7 +18,7 @@ output "bucket_name" {
 }
 
 output "bucket_region" {
-  description = "Region the bucket lives in. Trino's fs.native-s3 and the RunAI streamer both need it explicitly."
+  description = "Region the bucket lives in. Trino's S3 filesystem (fs.s3.enabled, as s3.region) and the RunAI streamer both need it explicitly."
   value       = aws_s3_bucket.this.bucket_region
 }
 

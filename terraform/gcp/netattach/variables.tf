@@ -1,23 +1,22 @@
 // -----------------------------------------------------------------------------
 // netAttach (GCP), inputs
 //
-// Every default is an Omnistrate template string. Omnistrate substitutes the
-// `{{ ... }}` text in-place BEFORE OpenTofu ever parses the file, so these
-// defaults are simultaneously (a) valid HCL for local `tofu validate` and
-// (b) the live wiring at deploy time. Anything you want to override per-cloud
-// can also be pushed in from the plan spec via `variablesValuesFileOverride`.
+// These files are plain portable Terraform. Nothing here carries Omnistrate
+// template text. The variables with no default are supplied by the plan spec
+// through `variablesValuesFileOverride`, which Omnistrate renders into a
+// .tfvars file next to the module before OpenTofu runs. The remaining variables
+// are tuning knobs whose defaults work as they stand, and can also be pushed in
+// from the plan spec.
 // -----------------------------------------------------------------------------
 
 variable "project_id" {
-  description = "GCP project that owns the deployment cell's VPC."
+  description = "GCP project that owns the deployment cell's VPC. Wired from `$sys.deploymentCell.gcp.projectID`."
   type        = string
-  default     = "{{ $sys.deploymentCell.gcp.projectID }}"
 }
 
 variable "region" {
-  description = "Deployment cell region, e.g. us-central1."
+  description = "Deployment cell region, e.g. us-central1. Wired from `$sys.deploymentCell.region`."
   type        = string
-  default     = "{{ $sys.deploymentCell.region }}"
 }
 
 variable "network" {
@@ -26,15 +25,15 @@ variable "network" {
     ("my-vpc"), a partial URL ("projects/p/global/networks/my-vpc") or a full
     self_link, main.tf normalises all three. We attach to this network; we
     never create one.
+
+    Wired from `$sys.deploymentCell.cloudProviderNetworkID`.
   EOT
   type        = string
-  default     = "{{ $sys.deploymentCell.cloudProviderNetworkID }}"
 }
 
 variable "instance_id" {
-  description = "Omnistrate instance id. Present in every globally-scoped name."
+  description = "Omnistrate instance id, from `$sys.id`. Present in every globally-scoped name."
   type        = string
-  default     = "{{ $sys.id }}"
 }
 
 variable "manage_psa_connection" {

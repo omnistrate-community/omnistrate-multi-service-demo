@@ -15,13 +15,17 @@ output "workload_identity_ref" {
 
     So the Helm layer writes one templated annotation value,
     `{{ $identityInfra.out.workload_identity_ref }}`, and only the annotation
-    KEY differs per cloud, a per-cloud chartValues line, not a per-cloud chart.
+    KEY differs per cloud, a scoped layeredChartValues layer holding that one
+    annotation, not a per-cloud chart.
 
     Azure needs one extra thing the other two clouds do not: the pod LABEL
     `azure.workload.identity/use: "true"`, without which the mutating webhook
-    never injects the token volume and the annotation is silently inert. Every
-    chart in Plan 2 therefore sets that label on Azure. Forgetting it produces a
-    pod that starts cleanly and fails only at the first storage call.
+    never injects the token volume and the annotation is silently inert. The
+    three Plan 2 workloads that reach object storage set it: vllmInference,
+    aiWorkers and trino. The two Temporal releases do not, since they talk only
+    to Cassandra and Postgres. Forgetting it on a workload that does reach
+    storage produces a pod that starts cleanly and fails only at the first
+    storage call.
   EOT
   value       = azurerm_user_assigned_identity.workload.client_id
 }

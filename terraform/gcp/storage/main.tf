@@ -25,6 +25,10 @@
 //        configurationPerCloudProvider:
 //          gcp:
 //            terraformPath: /terraform/gcp/storage
+//            variablesValuesFileOverride: |
+//              project_id  = "{{ $sys.deploymentCell.gcp.projectID }}"
+//              region      = "{{ $sys.deploymentCell.region }}"
+//              instance_id = "{{ $sys.id }}"
 //            gitConfiguration:
 //              reference: refs/tags/vX.Y.Z
 //              repositoryUrl: https://github.com/<org>/omnistrate-platform-demo.git
