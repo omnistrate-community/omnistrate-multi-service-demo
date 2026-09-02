@@ -145,15 +145,6 @@ services:
         modifiable: false
         export: false
 
-      - key: storageClassName
-        name: Storage Class
-        description: StorageClass for the Cassandra data volumes. Leave blank to use the deployment cell's default.
-        type: String
-        required: false
-        modifiable: false
-        export: true
-        defaultValue: "omnistrate-platform-default"
-
       - key: storageSizeGi
         name: Data Volume Size (GiB)
         description: >-
@@ -195,10 +186,8 @@ services:
         modifiable: false
         export: true
         defaultValue: "s3"
-        options:
-          - s3
-          - google_storage
-          - azure_blobs
+        # labeledOptions carries both the accepted values and their display
+        # labels. The build rejects options and labeledOptions together.
         labeledOptions:
           s3: "AWS S3"
           google_storage: "Google Cloud Storage"
@@ -230,9 +219,6 @@ services:
         modifiable: false
         export: true
         defaultValue: "role-based"
-        options:
-          - role-based
-          - static-secret
         labeledOptions:
           role-based: "Keyless (AWS IRSA / GCP Workload Identity)"
           static-secret: "Static key (required on Azure)"
@@ -287,13 +273,10 @@ services:
             cass-operator:
               enabled: true
 
-      outputParameters:
-        # Non-secret half of the contract only. There is no per-entry export
-        # flag on outputParameters, so anything here is published in
-        # result_params in plaintext, never put the password here.
-        "Cassandra Datacenter": "dc1"
-        "Cassandra Port": "9042"
-        "Cassandra Keyspace": "temporal"
+      # No outputParameters here. When a resource defines systemWorkflows.create,
+      # the build rejects operatorCRDConfiguration.outputParameters and requires
+      # them under systemWorkflows.create or .modify instead. The connection
+      # details a consumer needs are in the header of this file.
 
     systemWorkflows:
       # ---------------------------------------------------------------------
@@ -323,8 +306,6 @@ services:
                 value: "{{ $var.clusterSize }}"
               - name: serverVersion
                 value: "{{ $var.serverVersion }}"
-              - name: storageClassName
-                value: "{{ $var.storageClassName }}"
               - name: storageSizeGi
                 value: "{{ $var.storageSizeGi }}"
               - name: heapSizeGi
@@ -348,7 +329,6 @@ services:
                   - name: cassandraPassword
                   - name: clusterSize
                   - name: serverVersion
-                  - name: storageClassName
                   - name: storageSizeGi
                   - name: heapSizeGi
                   - name: backupBucketName
@@ -382,8 +362,6 @@ services:
                           value: "{{inputs.parameters.clusterSize}}"
                         - name: serverVersion
                           value: "{{inputs.parameters.serverVersion}}"
-                        - name: storageClassName
-                          value: "{{inputs.parameters.storageClassName}}"
                         - name: storageSizeGi
                           value: "{{inputs.parameters.storageSizeGi}}"
                         - name: heapSizeGi
@@ -422,7 +400,6 @@ services:
                   - name: instanceId
                   - name: clusterSize
                   - name: serverVersion
-                  - name: storageClassName
                   - name: storageSizeGi
                   - name: heapSizeGi
                   - name: backupBucketName
@@ -458,7 +435,13 @@ services:
                         # Omitting it passes schema validation and is then
                         # rejected at admission.
                         cassandraDataVolumeClaimSpec:
-                          storageClassName: "{{inputs.parameters.storageClassName}}"
+                          # storageClassName is omitted so the PVC binds to the
+                          # deployment cell's default StorageClass. Omnistrate
+                          # provisions that per cell and names it after the org
+                          # (org-<org-id>-managed-premium on Azure), so there is
+                          # no portable literal to put here. Setting it to an
+                          # empty string is not equivalent: Kubernetes reads that
+                          # as "no StorageClass" and the PVC never binds.
                           accessModes:
                             - ReadWriteOnce
                           resources:
@@ -477,7 +460,10 @@ services:
                         # name. Do not template it.
                         - metadata:
                             name: dc1
-                          size: "{{inputs.parameters.clusterSize}}"
+                          # Unquoted on purpose. The CRD types size as an integer, and a
+                          # quoted substitution renders as a string, which the
+                          # API server rejects.
+                          size: {{inputs.parameters.clusterSize}}
                           racks:
                             - name: rack1
                               nodeAffinityLabels:
@@ -574,7 +560,10 @@ services:
                       datacenters:
                         - metadata:
                             name: dc1
-                          size: "{{inputs.parameters.clusterSize}}"
+                          # Unquoted on purpose. The CRD types size as an integer, and a
+                          # quoted substitution renders as a string, which the
+                          # API server rejects.
+                          size: {{inputs.parameters.clusterSize}}
 
       # ---------------------------------------------------------------------
       # STOP / START, the operator's native quiesce.
@@ -799,8 +788,6 @@ services:
                 value: "{{ $var.clusterSize }}"
               - name: serverVersion
                 value: "{{ $var.serverVersion }}"
-              - name: storageClassName
-                value: "{{ $var.storageClassName }}"
               - name: storageSizeGi
                 value: "{{ $var.storageSizeGi }}"
               - name: heapSizeGi
@@ -824,7 +811,6 @@ services:
                   - name: cassandraPassword
                   - name: clusterSize
                   - name: serverVersion
-                  - name: storageClassName
                   - name: storageSizeGi
                   - name: heapSizeGi
                   - name: backupBucketName
@@ -860,8 +846,6 @@ services:
                           value: "{{inputs.parameters.clusterSize}}"
                         - name: serverVersion
                           value: "{{inputs.parameters.serverVersion}}"
-                        - name: storageClassName
-                          value: "{{inputs.parameters.storageClassName}}"
                         - name: storageSizeGi
                           value: "{{inputs.parameters.storageSizeGi}}"
                         - name: heapSizeGi
@@ -913,7 +897,6 @@ services:
                   - name: sourceInstanceId
                   - name: clusterSize
                   - name: serverVersion
-                  - name: storageClassName
                   - name: storageSizeGi
                   - name: heapSizeGi
                   - name: backupBucketName
@@ -940,7 +923,13 @@ services:
                             omnistrate.com/include-customer-billing: "true"
                       storageConfig:
                         cassandraDataVolumeClaimSpec:
-                          storageClassName: "{{inputs.parameters.storageClassName}}"
+                          # storageClassName is omitted so the PVC binds to the
+                          # deployment cell's default StorageClass. Omnistrate
+                          # provisions that per cell and names it after the org
+                          # (org-<org-id>-managed-premium on Azure), so there is
+                          # no portable literal to put here. Setting it to an
+                          # empty string is not equivalent: Kubernetes reads that
+                          # as "no StorageClass" and the PVC never binds.
                           accessModes:
                             - ReadWriteOnce
                           resources:
@@ -953,7 +942,10 @@ services:
                       datacenters:
                         - metadata:
                             name: dc1
-                          size: "{{inputs.parameters.clusterSize}}"
+                          # Unquoted on purpose. The CRD types size as an integer, and a
+                          # quoted substitution renders as a string, which the
+                          # API server rejects.
+                          size: {{inputs.parameters.clusterSize}}
                     medusa:
                       purgeBackups: false
                       storageProperties:
@@ -1167,13 +1159,22 @@ services:
     # -----------------------------------------------------------------------
     # Provider-defined verb. A repair is the single most common Cassandra day-2
     # operation and it demos well: it is visibly a distributed operation.
+    #
+    # This runs through the Cassandra management API rather than a CassandraTask.
+    # cass-operator's CassandraTask supports twelve job commands (cleanup,
+    # rebuild, rolling_restart, replacenode, upgradesstables, scrub, compaction,
+    # move, flush, garbagecollect, refresh, ts_reload) and repair is not among
+    # them. The CRD types `command` as a free-form string, so the API server
+    # accepts an unsupported value and the operator then logs
+    # "unknown job command: repair" while leaving the CR at active=1 with no
+    # failure condition, which stalls the calling workflow until its deadline.
     # -----------------------------------------------------------------------
     customWorkflows:
       - verb: repair
         displayName: Run anti-entropy repair
         description: >-
-          Runs `nodetool repair` on the datacenter via a Cassandra Task. Use after
-          a node replacement or when read repair has fallen behind.
+          Runs a full anti-entropy repair on every node in the datacenter. Use
+          after a node replacement or when read repair has fallen behind.
         scope:
           - fleet
         # customWorkflows[].apiParameters takes `displayName` rather than
@@ -1181,7 +1182,7 @@ services:
         apiParameters:
           - key: repairKeyspace
             displayName: Keyspace
-            description: Keyspace to repair. Leave blank to repair all keyspaces.
+            description: Keyspace to repair. Leave blank to repair all non-system keyspaces.
             type: String
             required: false
             modifiable: true
@@ -1206,8 +1207,30 @@ services:
                   - name: repairKeyspace
               dag:
                 tasks:
-                  - name: applyrepairtask
-                    template: applycassandratask
+                  # customWorkflows allow only apply, delete, get and patch, so
+                  # the Job needs a stable name rather than a generateName. That
+                  # makes the previous run's Job a hazard: applying the same
+                  # spec over a completed Job is a no-op that satisfies
+                  # status.succeeded > 0 immediately, reporting success without
+                  # repairing anything. Deleting first is what keeps the verb
+                  # honest when it is invoked twice.
+                  - name: deleteoldjob
+                    template: deleteoldjob
+                    # On the first invocation there is no previous Job, and a
+                    # delete of something absent is a failure the verb should
+                    # shrug off rather than stall on.
+                    continueOn:
+                      failed: true
+                    arguments:
+                      parameters:
+                        - name: namespace
+                          value: "{{inputs.parameters.namespace}}"
+                        - name: instanceId
+                          value: "{{inputs.parameters.instanceId}}"
+
+                  - name: applyrepairjob
+                    template: applyrepairjob
+                    dependencies: [deleteoldjob]
                     arguments:
                       parameters:
                         - name: namespace
@@ -1217,7 +1240,23 @@ services:
                         - name: repairKeyspace
                           value: "{{inputs.parameters.repairKeyspace}}"
 
-            - name: applycassandratask
+            - name: deleteoldjob
+              inputs:
+                parameters:
+                  - name: namespace
+                  - name: instanceId
+              resource:
+                action: delete
+                flags:
+                  - --ignore-not-found
+                manifest: |
+                  apiVersion: batch/v1
+                  kind: Job
+                  metadata:
+                    name: "repair-{{inputs.parameters.instanceId}}"
+                    namespace: "{{inputs.parameters.namespace}}"
+
+            - name: applyrepairjob
               inputs:
                 parameters:
                   - name: namespace
@@ -1225,20 +1264,87 @@ services:
                   - name: repairKeyspace
               resource:
                 action: apply
-                # CassandraTask exposes a flat status.succeeded counter.
-                successCondition: status.succeeded == 1
+                successCondition: status.succeeded > 0
+                failureCondition: status.failed > 0
                 manifest: |
-                  apiVersion: control.k8ssandra.io/v1alpha1
-                  kind: CassandraTask
+                  apiVersion: batch/v1
+                  kind: Job
                   metadata:
                     name: "repair-{{inputs.parameters.instanceId}}"
                     namespace: "{{inputs.parameters.namespace}}"
                   spec:
-                    datacenter:
-                      name: dc1
-                      namespace: "{{inputs.parameters.namespace}}"
-                    jobs:
-                      - name: repair
-                        command: repair
-                        args:
-                          keyspace_name: "{{inputs.parameters.repairKeyspace}}"
+                    backoffLimit: 0
+                    # Short, so a completed Job clears itself soon after the
+                    # verb returns and the delete above has less to do.
+                    ttlSecondsAfterFinished: 120
+                    template:
+                      spec:
+                        restartPolicy: Never
+                        containers:
+                          - name: repair
+                            # The same image the Cassandra pods run, so it is
+                            # already cached on every node this could land on
+                            # and the verb adds no new registry dependency.
+                            image: docker.io/k8ssandra/cass-management-api:5.0.9-ubi
+                            command: ["/bin/sh", "-c"]
+                            args:
+                              - |
+                                set -eu
+                                NS="{{inputs.parameters.namespace}}"
+                                SVC="{{inputs.parameters.instanceId}}-dc1-all-pods-service.${NS}.svc.cluster.local"
+                                KS="{{inputs.parameters.repairKeyspace}}"
+
+                                # The headless service resolves to one A record
+                                # per Cassandra pod, which is how this reaches
+                                # every node without knowing the rack layout.
+                                NODES=$(getent ahostsv4 "$SVC" | awk '{print $1}' | sort -u)
+                                if [ -z "$NODES" ]; then
+                                  echo "no nodes resolved for $SVC" >&2
+                                  exit 1
+                                fi
+
+                                first=$(echo "$NODES" | head -1)
+                                if [ -z "$KS" ]; then
+                                  KEYSPACES=$(curl -sf -m 30 "http://${first}:8080/api/v0/ops/keyspace" \
+                                    | tr -d '[]"' | tr ',' '\n' \
+                                    | grep -v '^system' | grep -v '^$')
+                                else
+                                  KEYSPACES="$KS"
+                                fi
+                                echo "repairing keyspaces: $(echo $KEYSPACES | tr '\n' ' ')"
+
+                                rc=0
+                                for node in $NODES; do
+                                  for ks in $KEYSPACES; do
+                                    echo "--- $node / $ks ---"
+                                    # /api/v2/repairs takes `keyspace`; the v0
+                                    # and v1 routes take `keyspace_name` and a
+                                    # mistyped field there is accepted silently.
+                                    id=$(curl -sf -m 60 -X PUT \
+                                      "http://${node}:8080/api/v2/repairs" \
+                                      -H 'Content-Type: application/json' \
+                                      -d "{\"keyspace\":\"${ks}\",\"full_repair\":true,\"repair_parallelism\":\"parallel\"}" \
+                                      | sed -n 's/.*"repair_id" *: *"\([^"]*\)".*/\1/p')
+                                    if [ -z "$id" ]; then
+                                      echo "no repair_id returned for $node/$ks" >&2
+                                      rc=1
+                                      continue
+                                    fi
+
+                                    # Poll rather than assume. A repair that
+                                    # returns instantly is normal at RF=1, and
+                                    # one that fails reports it only here.
+                                    while true; do
+                                      st=$(curl -sf -m 30 \
+                                        "http://${node}:8080/api/v0/ops/executor/job?job_id=${id}")
+                                      case "$st" in
+                                        *'"status":"COMPLETED"'*)
+                                          echo "$node/$ks completed"; break ;;
+                                        *'"status":"ERROR"'*)
+                                          echo "$node/$ks failed: $st" >&2; rc=1; break ;;
+                                      esac
+                                      sleep 10
+                                    done
+                                  done
+                                done
+                                exit $rc

@@ -109,6 +109,19 @@ desktop.ini
 .claude/
 skills-lock.json
 
+# --- Internal notes ------------------------------------------------------------
+# Working notes on platform gaps hit while building this. Not part of the
+# deliverable and not for customers.
+PLATFORM-FEEDBACK.md
+
+# --- Generated test plan -------------------------------------------------------
+# .test/make-test-plan.py derives this from plans/plan1-managed-cassandra.yaml
+# and stamps in an Azure subscription and tenant id from the environment. It is a
+# build output that carries account identifiers, so it stays out of the repo.
+# Regenerate with:
+#   AZ_SUBSCRIPTION_ID=... AZ_TENANT_ID=... python3 .test/make-test-plan.py
+.test/plan1-hosted.yaml
+
 # --- Scratch -----------------------------------------------------------------
 scratch/
 tmp/
